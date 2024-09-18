@@ -1,0 +1,7 @@
+checkpoints/
+wandb/
+*/
+**/
+*.pkl
+*.pth
+*.done

@@ -1,7 +1,7 @@
 checkpoints/
 wandb/
-*/
-**/
+a/
+aa/
 *.pkl
 *.pth
 *.done

@@ -14,6 +14,12 @@ def move_data_to_device(x, device):
 
     return x.to(device)
 
+def mixup(size, alpha):
+    rn_indices = torch.randperm(size)
+    lambd = np.random.beta(alpha, alpha, size).astype(np.float32)
+    lambd = np.concatenate([lambd[:, None], 1 - lambd[:, None]], 1).max(1)
+    lam = torch.FloatTensor(lambd)
+    return rn_indices, lam
 
 def do_mixup(x, mixup_lambda):
     """Mixup x of even indexes (0, 2, 4, ...) with x of odd indexes 

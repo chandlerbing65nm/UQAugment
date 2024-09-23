@@ -28,5 +28,5 @@ cd Repositories/FFIA
 #     --wand_project "affia-3k" \
 
 python train.py \
-    --model_name "cnn8rnn" \
+    --model_name "panns_cnn6" \
     --wandb_mode "offline" \

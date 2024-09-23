@@ -20,6 +20,7 @@ import wandb  # Import wandb
 import os
 import random
 from sklearn.metrics import average_precision_score, accuracy_score
+from sklearn.preprocessing import label_binarize
 import torch.nn.functional as F
 
 import ssl
@@ -236,11 +237,22 @@ def main():
             targets = batch['target'].to(device)
 
             if 'panns' in args.model_name:
-                outputs = model(inputs)['clipwise_output']
+                output_dict = model(inputs)
+                outputs = output_dict['clipwise_output']
             else:
                 outputs = model(inputs)
 
-            loss = criterion(outputs, targets.argmax(dim=-1))
+            if args.frontend == 'mixup':
+                mixup_lambda = output_dict['mixup_lambda']
+                rn_indices = output_dict['rn_indices']
+                bs = inputs.size(0)
+                labels = targets.argmax(dim=-1)
+                samples_loss = (F.cross_entropy(outputs, labels, reduction="none") * mixup_lambda.reshape(bs) +
+                                F.cross_entropy(outputs, labels[rn_indices], reduction="none") * (1. - mixup_lambda.reshape(bs)))
+                loss = samples_loss.mean()
+            else:
+                loss = criterion(outputs, targets.argmax(dim=-1))
+
 
             # Backward pass and optimization
             optimizer.zero_grad()
@@ -258,9 +270,13 @@ def main():
         all_train_targets = np.concatenate(all_train_targets, axis=0)
         all_train_outputs = np.concatenate(all_train_outputs, axis=0)
 
+        # Convert targets to one-hot encoding
+        num_classes = all_train_outputs.shape[1]
+        all_train_targets_onehot = label_binarize(all_train_targets, classes=np.arange(num_classes))
+
         # Calculate training accuracy and mAP
         train_acc = accuracy_score(all_train_targets, all_train_outputs.argmax(axis=-1))
-        train_map = average_precision_score(all_train_targets, all_train_outputs, average='macro')
+        train_map = average_precision_score(all_train_targets_onehot, all_train_outputs, average='macro')
 
         epoch_loss = running_loss / len(train_loader.dataset)
 
@@ -299,9 +315,13 @@ def main():
         all_val_targets = np.concatenate(all_val_targets, axis=0)
         all_val_outputs = np.concatenate(all_val_outputs, axis=0)
 
+        # Convert targets to one-hot encoding
+        num_classes = all_train_outputs.shape[1]
+        all_val_targets_onehot = label_binarize(all_val_targets, classes=np.arange(num_classes))
+
         # Calculate validation accuracy and mAP
         val_acc = accuracy_score(all_val_targets, all_val_outputs.argmax(axis=-1))
-        val_map = average_precision_score(all_val_targets, all_val_outputs, average='macro')
+        val_map = average_precision_score(all_val_targets_onehot, all_val_outputs, average='macro')
 
         # Print validation statistics
         print(f'Epoch [{epoch+1}/{args.max_epoch}], '

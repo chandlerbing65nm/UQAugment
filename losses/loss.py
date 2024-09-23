@@ -86,3 +86,89 @@ class HardBootstrappingLoss(nn.Module):
         if self.reduce:
             return torch.mean(beta_xentropy + bootstrap)
         return beta_xentropy + bootstrap
+
+class InterClassContrastiveLoss(nn.Module):
+    def __init__(self, temperature=0.1, num_positives=2, num_negatives=2):
+        super(InterClassContrastiveLoss, self).__init__()
+        self.temperature = temperature
+        self.num_positives = num_positives
+        self.num_negatives = num_negatives
+
+    def forward(self, features, labels):
+        """
+        :param features: Tensor of shape [batch_size, 512] representing the embeddings.
+        :param labels: Tensor of shape [batch_size, num_classes] representing the one-hot encoded labels.
+        :return: Scalar contrastive loss.
+        """
+        batch_size = features.shape[0]
+        
+        # Normalize the feature embeddings
+        features = F.normalize(features, p=2, dim=1)
+        
+        # Compute the cosine similarity matrix between all pairs of features
+        similarity_matrix = torch.matmul(features, features.T) / self.temperature
+
+        # Ensure the diagonal elements (self-similarity) are excluded
+        mask = torch.eye(batch_size, dtype=torch.bool).to(features.device)
+        similarity_matrix = similarity_matrix.masked_fill(mask, -float('inf'))
+        
+        # Get the actual class labels from one-hot encoded labels
+        class_labels = torch.argmax(labels, dim=1)
+
+        # Initialize the total loss
+        total_loss = 0.0
+        num_pairs = 0
+        
+        # Iterate over the batch to calculate the loss for each class pair (multiple positives and negatives)
+        for i in range(batch_size):
+            # Get the current sample's class
+            current_class = class_labels[i]
+
+            # Find positive samples in the same class
+            positive_indices = (class_labels == current_class).nonzero(as_tuple=True)[0]
+            positive_indices = positive_indices[positive_indices != i]  # Exclude self
+
+            # If there are not enough positive samples, skip this iteration
+            if positive_indices.numel() < self.num_positives:
+                continue
+
+            # Randomly sample multiple positives from the current class
+            selected_positives = positive_indices[torch.randperm(len(positive_indices))[:self.num_positives]]
+
+            # Find a negative class (different from the current class)
+            negative_classes = (class_labels != current_class).unique()
+
+            if len(negative_classes) > 0:
+                # Select one random negative class
+                negative_class = negative_classes[torch.randint(len(negative_classes), (1,))]
+
+                # Find all samples from the selected negative class
+                negative_indices = (class_labels == negative_class).nonzero(as_tuple=True)[0]
+
+                # If there are not enough negative samples, skip this iteration
+                if negative_indices.numel() < self.num_negatives:
+                    continue
+
+                # Randomly sample multiple negatives from the selected negative class
+                selected_negatives = negative_indices[torch.randperm(len(negative_indices))[:self.num_negatives]]
+
+                # Compute contrastive loss for each combination of positives and negatives
+                for pos_idx in selected_positives:
+                    for neg_idx in selected_negatives:
+                        # Contrast positive vs negative similarity
+                        positive_similarity = similarity_matrix[i, pos_idx]
+                        negative_similarity = similarity_matrix[i, neg_idx]
+                        
+                        # Compute the contrastive loss for each positive-negative pair
+                        loss = -torch.log(
+                            torch.exp(positive_similarity) / 
+                            (torch.exp(positive_similarity) + torch.exp(negative_similarity))
+                        )
+                        total_loss += loss
+                        num_pairs += 1
+
+        # Average the loss over the number of valid pairs
+        if num_pairs > 0:
+            total_loss /= num_pairs
+        
+        return total_loss

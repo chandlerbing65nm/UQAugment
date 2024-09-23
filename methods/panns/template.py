@@ -20,7 +20,19 @@ import torch.utils.data
 import torchaudio
 import librosa
 
+from methods.panns.pytorch_utils import *
 from methods.panns.models import *
+
+class AttentionLayer(nn.Module):
+    def __init__(self, d_model, num_heads):
+        super(AttentionLayer, self).__init__()
+        self.attention = nn.MultiheadAttention(embed_dim=d_model, num_heads=num_heads, batch_first=True)
+
+    def forward(self, x): 
+        x = x.squeeze(1) # [batch, time_steps, mel_bins]
+        attn_output, _ = self.attention(x, x, x)
+
+        return attn_output.unsqueeze(1)
 
 
 class PANNS_CNN6(nn.Module):
@@ -62,6 +74,9 @@ class PANNS_CNN6(nn.Module):
         self.logmel_extractor = LogmelFilterBank(sr=sample_rate, n_fft=window_size, 
             n_mels=mel_bins, fmin=fmin, fmax=fmax, ref=ref, amin=amin, top_db=top_db, 
             freeze_parameters=True)
+
+        # Attention layer for low-frequency enhancement
+        self.attention_layer = AttentionLayer(d_model=mel_bins, num_heads=4)
 
         # MFCC feature extractor
         self.mfcc_extractor = torchaudio.transforms.MFCC(
@@ -198,7 +213,31 @@ class PANNS_CNN6(nn.Module):
             x = x.transpose(1, 3)  # Align dimensions for the base model
             x = self.bn0(x)   # Apply the batch normalization from base
             x = x.transpose(1, 3)
+        elif self.frontend == 'selfatt':
+            x = self.spectrogram_extractor(input)  # (batch, time_steps, freq_bins)
+            x = self.logmel_extractor(x)  # (batch, time_steps, mel_bins)
 
+            x = self.attention_layer(x)
+
+            # Pass the precomputed features (MFCC or LogMel) into the base model conv blocks
+            x = x.transpose(1, 3)  # Align dimensions for the base model
+            x = self.base.bn0(x)   # Apply the batch normalization from base
+            x = x.transpose(1, 3)
+        elif self.frontend == 'mixup':
+            x = self.spectrogram_extractor(input)  # (batch, time_steps, freq_bins)
+            x = self.logmel_extractor(x)  # (batch, time_steps, mel_bins)
+
+            # Pass the precomputed features (MFCC or LogMel) into the base model conv blocks
+            x = x.transpose(1, 3)  # Align dimensions for the base model
+            x = self.base.bn0(x)   # Apply the batch normalization from base
+            x = x.transpose(1, 3)
+
+            if self.training:
+                bs = x.size(0)
+                rn_indices, lam = mixup(bs, 0.4)
+                lam = lam.to(x.device)
+                x = x * lam.reshape(bs, 1, 1, 1) + \
+                    x[rn_indices] * (1. - lam.reshape(bs, 1, 1, 1))
         else:
             output_dict = self.base(input, mixup_lambda)
             embedding = output_dict['embedding']
@@ -237,7 +276,10 @@ class PANNS_CNN6(nn.Module):
         embedding = F.dropout(x, p=0.5, training=self.training)
         clipwise_output = torch.log_softmax(self.fc_transfer(embedding), dim=-1)
 
-        output_dict = {'clipwise_output': clipwise_output, 'embedding': embedding}
+        if self.training and self.frontend == 'mixup':
+            output_dict = {'rn_indices':rn_indices, 'mixup_lambda': lam, 'clipwise_output': clipwise_output, 'embedding': embedding}
+        else:
+            output_dict = {'clipwise_output': clipwise_output, 'embedding': embedding}
         return output_dict
 
 

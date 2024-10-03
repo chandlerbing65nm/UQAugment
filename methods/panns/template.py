@@ -22,23 +22,13 @@ import librosa
 
 from methods.panns.pytorch_utils import *
 from methods.panns.models import *
-
-class AttentionLayer(nn.Module):
-    def __init__(self, d_model, num_heads):
-        super(AttentionLayer, self).__init__()
-        self.attention = nn.MultiheadAttention(embed_dim=d_model, num_heads=num_heads, batch_first=True)
-
-    def forward(self, x): 
-        x = x.squeeze(1) # [batch, time_steps, mel_bins]
-        attn_output, _ = self.attention(x, x, x)
-
-        return attn_output.unsqueeze(1)
-
+from frontends.leaf.frontend import Leaf
+from frontends.diffres.frontend import DiffRes
 
 class PANNS_CNN6(nn.Module):
     def __init__(self, sample_rate, window_size, hop_size, mel_bins, fmin, 
                  fmax, num_classes, frontend='logmel',
-                 freeze_base=False,
+                 freeze_base=False, device=None,
                  ):
         """Classifier for a new task using pretrained Cnn6 as a sub-module."""
         super(PANNS_CNN6, self).__init__()
@@ -74,10 +64,7 @@ class PANNS_CNN6(nn.Module):
         self.logmel_extractor = LogmelFilterBank(sr=sample_rate, n_fft=window_size, 
             n_mels=mel_bins, fmin=fmin, fmax=fmax, ref=ref, amin=amin, top_db=top_db, 
             freeze_parameters=True)
-
-        # Attention layer for low-frequency enhancement
-        self.attention_layer = AttentionLayer(d_model=mel_bins, num_heads=4)
-
+            
         # MFCC feature extractor
         self.mfcc_extractor = torchaudio.transforms.MFCC(
             sample_rate=sample_rate,
@@ -92,7 +79,24 @@ class PANNS_CNN6(nn.Module):
                 "pad_mode": pad_mode
             }
         )
-        self.bn0 = nn.BatchNorm2d(64*3)
+
+        self.leaf_extractor = Leaf(
+            n_filters = 40,
+            sample_rate = sample_rate,
+            window_len = 16,
+            window_stride = 8,
+            init_min_freq = 50.0,
+            init_max_freq = sample_rate // 2,
+        )
+
+        self.diffres_extractor = DiffRes(
+            in_t_dim=251,
+            in_f_dim=mel_bins,
+            dimension_reduction_rate=0.20,
+            learn_pos_emb=False
+        )
+
+        self.bn0_ens = nn.BatchNorm2d(mel_bins*3)
         # Transfer to another task layer
         self.fc_transfer = nn.Linear(512, num_classes, bias=True)  # Assuming 512 is embedding size
         
@@ -145,16 +149,6 @@ class PANNS_CNN6(nn.Module):
         # Load the updated model_dict
         model.load_state_dict(model_dict)
 
-    # def forward(self, input, mixup_lambda=None):
-    #     """Input: (batch_size, data_length)"""
-    #     output_dict = self.base(input, mixup_lambda)
-    #     embedding = output_dict['embedding']
-
-    #     clipwise_output = torch.log_softmax(self.fc_transfer(embedding), dim=-1)
-    #     output_dict['clipwise_output'] = clipwise_output
-
-    #     return output_dict
-
     def forward(self, input, mixup_lambda=None):
         """Input: (batch_size, data_length)"""
         
@@ -167,6 +161,9 @@ class PANNS_CNN6(nn.Module):
             x = x.transpose(1, 3)  # Align dimensions for the base model
             x = self.base.bn0(x)   # Apply the batch normalization from base
             x = x.transpose(1, 3)
+
+            if self.training:
+                x = self.base.spec_augmenter(x)
 
         elif self.frontend == 'chroma':
             # Extract chroma features using librosa's chroma_stft function
@@ -185,6 +182,9 @@ class PANNS_CNN6(nn.Module):
             x = x.transpose(1, 3)  # Align dimensions for the base model
             x = self.base.bn0(x)   # Apply the batch normalization from base
             x = x.transpose(1, 3)
+
+            if self.training:
+                x = self.base.spec_augmenter(x)
 
         elif self.frontend == 'ensemble':
             # If MFCC is chosen, extract MFCC features
@@ -211,18 +211,12 @@ class PANNS_CNN6(nn.Module):
 
             # Pass the precomputed features (MFCC or LogMel) into the base model conv blocks
             x = x.transpose(1, 3)  # Align dimensions for the base model
-            x = self.bn0(x)   # Apply the batch normalization from base
+            x = self.bn0_ens(x)   # Apply the batch normalization from base
             x = x.transpose(1, 3)
-        elif self.frontend == 'selfatt':
-            x = self.spectrogram_extractor(input)  # (batch, time_steps, freq_bins)
-            x = self.logmel_extractor(x)  # (batch, time_steps, mel_bins)
 
-            x = self.attention_layer(x)
+            if self.training:
+                x = self.base.spec_augmenter(x)
 
-            # Pass the precomputed features (MFCC or LogMel) into the base model conv blocks
-            x = x.transpose(1, 3)  # Align dimensions for the base model
-            x = self.base.bn0(x)   # Apply the batch normalization from base
-            x = x.transpose(1, 3)
         elif self.frontend == 'mixup':
             x = self.spectrogram_extractor(input)  # (batch, time_steps, freq_bins)
             x = self.logmel_extractor(x)  # (batch, time_steps, mel_bins)
@@ -238,11 +232,46 @@ class PANNS_CNN6(nn.Module):
                 lam = lam.to(x.device)
                 x = x * lam.reshape(bs, 1, 1, 1) + \
                     x[rn_indices] * (1. - lam.reshape(bs, 1, 1, 1))
+
+
+            if self.training:
+                x = self.base.spec_augmenter(x)
+
+        elif self.frontend == 'leaf':
+            x = self.leaf_extractor(input.unsqueeze(1))
+            x = x.transpose(1, 2)
+            x = x.unsqueeze(1)
+            # import ipdb; ipdb.set_trace() 
+            # print(x.shape)
+
+
+            if self.training:
+                x = self.base.spec_augmenter(x)
+
+        elif self.frontend == 'diffres':
+            x = self.spectrogram_extractor(input)  # (batch, time_steps, freq_bins)
+            x = self.logmel_extractor(x)  # (batch, time_steps, mel_bins)
+
+            # Pass the precomputed features (MFCC or LogMel) into the base model conv blocks
+            x = x.transpose(1, 3)  # Align dimensions for the base model
+            x = self.base.bn0(x)   # Apply the batch normalization from base
+            x = x.transpose(1, 3)
+
+            if self.training:
+                x = self.base.spec_augmenter(x)
+
+            x = x.squeeze(1)
+            ret = self.diffres_extractor(x)
+
+            # Access the outputs
+            guide_loss = ret["guide_loss"]
+            x = ret["avgpool"].unsqueeze(1)
+
         else:
             output_dict = self.base(input, mixup_lambda)
             embedding = output_dict['embedding']
 
-            clipwise_output = torch.log_softmax(self.fc_transfer(embedding), dim=-1)
+            clipwise_output = self.fc_transfer(embedding)
             output_dict['clipwise_output'] = clipwise_output
 
             return output_dict
@@ -250,22 +279,18 @@ class PANNS_CNN6(nn.Module):
         # import ipdb; ipdb.set_trace() 
         # print(x.shape)
 
-
-        if self.training:
-            x = self.base.spec_augmenter(x)
-
         # Mixup on spectrogram
         if self.training and mixup_lambda is not None:
             x = do_mixup(x, mixup_lambda)
 
         x = self.base.conv_block1(x, pool_size=(2, 2), pool_type='avg')
-        x = F.dropout(x, p=0.2, training=self.training)
+        x = F.dropout(x, p=0.5, training=self.training)
         x = self.base.conv_block2(x, pool_size=(2, 2), pool_type='avg')
-        x = F.dropout(x, p=0.2, training=self.training)
+        x = F.dropout(x, p=0.5, training=self.training)
         x = self.base.conv_block3(x, pool_size=(2, 2), pool_type='avg')
-        x = F.dropout(x, p=0.2, training=self.training)
+        x = F.dropout(x, p=0.5, training=self.training)
         x = self.base.conv_block4(x, pool_size=(2, 2), pool_type='avg')
-        x = F.dropout(x, p=0.2, training=self.training)
+        x = F.dropout(x, p=0.5, training=self.training)
         x = torch.mean(x, dim=3)
 
         (x1, _) = torch.max(x, dim=2)
@@ -274,10 +299,12 @@ class PANNS_CNN6(nn.Module):
         x = F.dropout(x, p=0.5, training=self.training)
         x = F.relu_(self.base.fc1(x))
         embedding = F.dropout(x, p=0.5, training=self.training)
-        clipwise_output = torch.log_softmax(self.fc_transfer(embedding), dim=-1)
+        clipwise_output = self.fc_transfer(embedding)
 
         if self.training and self.frontend == 'mixup':
             output_dict = {'rn_indices':rn_indices, 'mixup_lambda': lam, 'clipwise_output': clipwise_output, 'embedding': embedding}
+        elif self.training and self.frontend == 'diffres':
+            output_dict = {'clipwise_output': clipwise_output, 'embedding': embedding, 'diffres_loss': guide_loss}
         else:
             output_dict = {'clipwise_output': clipwise_output, 'embedding': embedding}
         return output_dict
@@ -370,7 +397,7 @@ class PANNS_RESNET22(nn.Module):
         output_dict = self.base(input, mixup_lambda)
         embedding = output_dict['embedding']
 
-        clipwise_output = torch.log_softmax(self.fc_transfer(embedding), dim=-1)
+        clipwise_output = self.fc_transfer(embedding)
         output_dict['clipwise_output'] = clipwise_output
 
         return output_dict
@@ -462,7 +489,7 @@ class PANNS_MOBILENETV1(nn.Module):
         output_dict = self.base(input, mixup_lambda)
         embedding = output_dict['embedding']
 
-        clipwise_output = torch.log_softmax(self.fc_transfer(embedding), dim=-1)
+        clipwise_output = self.fc_transfer(embedding)
         output_dict['clipwise_output'] = clipwise_output
 
         return output_dict
@@ -535,7 +562,7 @@ class PANNS_WAVEGRAM_CNN14(nn.Module):
         output_dict = self.base(input, mixup_lambda)
         embedding = output_dict['embedding']
 
-        clipwise_output = torch.log_softmax(self.fc_transfer(embedding), dim=-1)
+        clipwise_output = self.fc_transfer(embedding)
         output_dict['clipwise_output'] = clipwise_output
 
         return output_dict

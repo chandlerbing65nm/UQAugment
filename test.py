@@ -7,6 +7,7 @@ from sklearn.metrics import accuracy_score, average_precision_score
 
 from methods.panns.template import *
 from methods.hugging_face.models import *
+from sklearn.preprocessing import label_binarize
 
 import os
 import torch.nn.functional as F
@@ -27,7 +28,7 @@ def parse_test_args():
     parser.add_argument('--data_path', type=str, default='/mnt/users/chadolor/work/Datasets/affia3k/')
     parser.add_argument('--checkpoint_path', type=str, required=True, help='Path to the saved model checkpoint')
     parser.add_argument('--frontend', type=str, default='logmel')
-    
+    parser.add_argument('--output_filename', type=str, default='utils/test_audionames.txt', help='Output filename for saving audio filenames')
     return parser.parse_args()
 
 def main():
@@ -83,7 +84,6 @@ def main():
         )
         model.load_finetuned_weights(args.checkpoint_path)
     elif args.model_name == 'panns_wavegram_cnn14':
-        # Instantiate the model
         model = PANNS_WAVEGRAM_CNN14(
             sample_rate=args.sample_rate, 
             window_size=args.window_size, 
@@ -95,7 +95,6 @@ def main():
             )
         model.load_finetuned_weights(args.checkpoint_path)
     elif args.model_name == 'cnn8rnn':
-        # Instantiate the model
         model = CNN8RNN(
             num_classes=args.num_classes
             )
@@ -104,20 +103,7 @@ def main():
         raise ValueError(f"Unknown model name: {args.model_name}")
 
     # Load the saved model checkpoint
-    # model.load_state_dict(torch.load(args.checkpoint_path, map_location=device))
     model.to(device)
-
-    import audiomentations
-    transform = audiomentations.Compose([
-        audiomentations.LowPassFilter(
-            min_cutoff_freq=0.0,
-            max_cutoff_freq=12800.0, 
-            min_rolloff=12,
-            max_rolloff=24,
-            zero_phase=False, 
-            p=0.10
-            ),
-    ])
 
     # Initialize the test data loader
     test_dataset, test_loader = affia3k_loader(
@@ -138,14 +124,19 @@ def main():
     test_loss = 0.0
     all_test_targets = []
     all_test_outputs = []
+    all_filenames = []
 
-    # Define loss function (this could change based on your training configuration)
+    # Define loss function
     criterion = torch.nn.CrossEntropyLoss()
 
     with torch.no_grad():
         for batch in test_loader:
             inputs = batch['waveform'].to(device)
             targets = batch['target'].to(device)
+            filenames = batch['audio_name']
+
+            # Save filenames
+            all_filenames.extend(filenames)
 
             if 'panns' in args.model_name:
                 outputs = model(inputs)['clipwise_output']
@@ -163,9 +154,13 @@ def main():
     all_test_targets = np.concatenate(all_test_targets, axis=0)
     all_test_outputs = np.concatenate(all_test_outputs, axis=0)
 
+    # Convert targets to one-hot encoding
+    num_classes = all_test_outputs.shape[1]
+    all_test_targets_onehot = label_binarize(all_test_targets, classes=np.arange(num_classes))
+
     # Calculate test accuracy and mAP
     test_acc = accuracy_score(all_test_targets, all_test_outputs.argmax(axis=-1))
-    test_map = average_precision_score(all_test_targets, all_test_outputs, average='macro')
+    test_map = average_precision_score(all_test_targets_onehot, all_test_outputs, average='macro')
 
     # Calculate average loss
     test_loss /= len(test_loader.dataset)
@@ -174,6 +169,43 @@ def main():
     print(f'Test Loss: {test_loss:.4f}')
     print(f'Test Accuracy: {test_acc:.4f}')
     print(f'Test mAP: {test_map:.4f}')
+
+    # Custom labels for y-axis
+    class_labels = ['None', 'Weak', 'Medium', 'Strong']
+
+    # Save filenames to a txt file
+    with open(args.output_filename, 'w') as f:
+        for filename in all_filenames:
+            f.write(f"{filename}\n")
+
+    # Generate bar graph for predictions and targets
+    sample_indices = np.arange(len(all_test_targets))
+
+    # Generate point graph for predicted labels
+    plt.figure(figsize=(12, 6))
+    plt.scatter(sample_indices, all_test_outputs.argmax(axis=-1), color='blue', label='Predicted', marker='o')
+    # plt.xticks(sample_indices)
+    plt.yticks(np.arange(4), class_labels)
+    plt.ylim(-0.5, 3.5)  # Ensure 'None' (0) has its own space
+    plt.xlabel('Sample Index')
+    plt.ylabel('Predicted Class Label')
+    plt.title('Predicted Class Labels for Each Sample')
+    plt.legend()
+    plt.savefig('utils/predicted_points_graph.png')
+    plt.show()
+
+    # Generate point graph for target labels
+    plt.figure(figsize=(12, 6))
+    plt.scatter(sample_indices, all_test_targets, color='orange', label='Target', marker='x')
+    # plt.xticks(sample_indices)
+    plt.yticks(np.arange(4), class_labels)
+    plt.ylim(-0.5, 3.5)  # Ensure 'None' (0) has its own space
+    plt.xlabel('Sample Index')
+    plt.ylabel('Target Class Label')
+    plt.title('Target Class Labels for Each Sample')
+    plt.legend()
+    plt.savefig('utils/target_points_graph.png')
+    plt.show()
 
 if __name__ == '__main__':
     main()

@@ -213,7 +213,7 @@ def main():
     elif args.loss == 'ce':
         criterion = nn.CrossEntropyLoss()
     
-    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate, betas=(0.9, 0.999), weight_decay=1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate, betas=(0.9, 0.999), weight_decay=0)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=args.patience, factor=args.factor)
 
     if args.lr_warmup:
@@ -250,6 +250,11 @@ def main():
                 samples_loss = (F.cross_entropy(outputs, labels, reduction="none") * mixup_lambda.reshape(bs) +
                                 F.cross_entropy(outputs, labels[rn_indices], reduction="none") * (1. - mixup_lambda.reshape(bs)))
                 loss = samples_loss.mean()
+            elif args.frontend == 'diffres':
+                diffress_loss = output_dict['diffres_loss']
+                bce_loss = criterion(outputs, targets.argmax(dim=-1))
+                loss = diffress_loss + bce_loss
+
             else:
                 loss = criterion(outputs, targets.argmax(dim=-1))
 
@@ -316,7 +321,7 @@ def main():
         all_val_outputs = np.concatenate(all_val_outputs, axis=0)
 
         # Convert targets to one-hot encoding
-        num_classes = all_train_outputs.shape[1]
+        num_classes = all_val_outputs.shape[1]
         all_val_targets_onehot = label_binarize(all_val_targets, classes=np.arange(num_classes))
 
         # Calculate validation accuracy and mAP
@@ -324,10 +329,12 @@ def main():
         val_map = average_precision_score(all_val_targets_onehot, all_val_outputs, average='macro')
 
         # Print validation statistics
-        print(f'Epoch [{epoch+1}/{args.max_epoch}], '
+        print(
+            f'Epoch [{epoch+1}/{args.max_epoch}], '
             f'Val Loss: {val_loss:.4f}, '
-            f'Val Accuracy: {val_acc:.4f}, '
-            f'Val mAP: {val_map:.4f}')
+            f'Val mAP: {val_map:.4f}, '
+            f'Val Accuracy: {val_acc:.4f}'
+            )
 
         # Update learning rate and other metrics
         current_lr = optimizer.param_groups[0]['lr']
@@ -356,7 +363,7 @@ def main():
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             print(f"Best validation loss {best_val_loss:.4f}")
-            torch.save(model.state_dict(), f'{ckpt_dir}/{args.model_name}_{args.freq_band.lower()}_band_model_best_loss.pth')
+            # torch.save(model.state_dict(), f'{ckpt_dir}/{args.model_name}_{args.freq_band.lower()}_band_model_best_loss.pth')
 
         # Save the best model based on validation loss
         if val_acc > best_val_acc:
@@ -365,7 +372,7 @@ def main():
             torch.save(model.state_dict(), f'{ckpt_dir}/{args.model_name}_{args.freq_band.lower()}_band_model_best_acc.pth')
 
     # Save the final model
-    torch.save(model.state_dict(), f'{ckpt_dir}/{args.model_name}_{args.freq_band.lower()}_band_model_final.pth')
+    # torch.save(model.state_dict(), f'{ckpt_dir}/{args.model_name}_{args.freq_band.lower()}_band_model_final.pth')
 
 
 

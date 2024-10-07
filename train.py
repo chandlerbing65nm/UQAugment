@@ -99,6 +99,7 @@ def main():
             fmax=args.fmax, 
             num_classes=args.num_classes,
             frontend=args.frontend,
+            batch_size=args.batch_size,
             )
         model.load_from_pretrain("./weights/Cnn6_mAP=0.343.pth")
     # Initialize model
@@ -254,7 +255,6 @@ def main():
                 diffress_loss = output_dict['diffres_loss']
                 bce_loss = criterion(outputs, targets.argmax(dim=-1))
                 loss = diffress_loss + bce_loss
-
             else:
                 loss = criterion(outputs, targets.argmax(dim=-1))
 

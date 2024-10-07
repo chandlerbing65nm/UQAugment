@@ -8,7 +8,7 @@
 #SBATCH --partition=gpu            # Partition to submit to
 #SBATCH --gres=gpu:1               # Number of GPUs
 #SBATCH --time=48:00:00            # Time limit (hh:mm:ss)
-#SBATCH --output=*PANNS-CNN6(dropout=0.5)+DiffRes.out
+#SBATCH --output=*PANNS-CNN6(dropout=0.5)+DSTFT.out
 
 # Load necessary modules (if required)
 module purge
@@ -30,5 +30,5 @@ cd Repositories/FFIA
 
 python train.py \
     --model_name "panns_cnn6" \
-    --frontend "diffres" \
+    --frontend "dstft" \
     --wandb_mode "offline" \

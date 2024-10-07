@@ -24,10 +24,13 @@ from methods.panns.pytorch_utils import *
 from methods.panns.models import *
 from frontends.leaf.frontend import Leaf
 from frontends.diffres.frontend import DiffRes
+from frontends.dmel.frontend import DMel
+from frontends.dstft.frontend import DSTFT
+from frontends.sincnet.frontend import SincNet
 
 class PANNS_CNN6(nn.Module):
     def __init__(self, sample_rate, window_size, hop_size, mel_bins, fmin, 
-                 fmax, num_classes, frontend='logmel',
+                 fmax, num_classes, frontend='logmel', batch_size=200,
                  freeze_base=False, device=None,
                  ):
         """Classifier for a new task using pretrained Cnn6 as a sub-module."""
@@ -92,9 +95,42 @@ class PANNS_CNN6(nn.Module):
         self.diffres_extractor = DiffRes(
             in_t_dim=251,
             in_f_dim=mel_bins,
-            dimension_reduction_rate=0.20,
+            dimension_reduction_rate=0.60,
             learn_pos_emb=False
         )
+
+        self.dmel_extractor = DMel(
+            init_lambd=5.0, 
+            n_fft=window_size, 
+            win_length=window_size, 
+            hop_length=hop_size
+            )
+
+        self.dstft_extractor = DSTFT(
+            x=torch.randn(batch_size, sample_rate*2).to('cuda'),
+            win_length=window_size,
+            support=window_size,
+            stride=hop_size,
+            pow=2,
+            win_pow=2,
+            win_requires_grad=True,
+            stride_requires_grad=True,
+            pow_requires_grad=False,    
+            win_p="t",
+            win_min=window_size//2,              
+            win_max=window_size,            
+            stride_min=hop_size//2,          
+            stride_max=hop_size,           
+            sr=sample_rate,
+            )
+
+        self.sincnet_extractor = SincNet(
+            out_channels=mel_bins, 
+            sample_rate=sample_rate, 
+            kernel_size=hop_size, 
+            window_size=window_size, 
+            hop_size=hop_size, 
+            )
 
         self.bn0_ens = nn.BatchNorm2d(mel_bins*3)
         # Transfer to another task layer
@@ -241,9 +277,6 @@ class PANNS_CNN6(nn.Module):
             x = self.leaf_extractor(input.unsqueeze(1))
             x = x.transpose(1, 2)
             x = x.unsqueeze(1)
-            # import ipdb; ipdb.set_trace() 
-            # print(x.shape)
-
 
             if self.training:
                 x = self.base.spec_augmenter(x)
@@ -266,6 +299,49 @@ class PANNS_CNN6(nn.Module):
             # Access the outputs
             guide_loss = ret["guide_loss"]
             x = ret["avgpool"].unsqueeze(1)
+
+        elif self.frontend == 'dmel':
+            x = self.dmel_extractor(input) 
+            x = x.transpose(1, 2)
+            x = x.unsqueeze(1)
+
+            x = self.logmel_extractor(x)  # (batch, time_steps, mel_bins)
+
+            # Pass the precomputed features (MFCC or LogMel) into the base model conv blocks
+            x = x.transpose(1, 3)  # Align dimensions for the base model
+            x = self.base.bn0(x)   # Apply the batch normalization from base
+            x = x.transpose(1, 3)
+
+            if self.training:
+                x = self.base.spec_augmenter(x)
+
+        elif self.frontend == 'dstft':
+            x, _ = self.dstft_extractor(input)
+            x = x.transpose(1, 2)
+            x = x.unsqueeze(1)
+
+            x = self.logmel_extractor(x)  # (batch, time_steps, mel_bins)
+
+            # Pass the precomputed features (MFCC or LogMel) into the base model conv blocks
+            x = x.transpose(1, 3)  # Align dimensions for the base model
+            x = self.base.bn0(x)   # Apply the batch normalization from base
+            x = x.transpose(1, 3)
+
+            if self.training:
+                x = self.base.spec_augmenter(x)
+
+        elif self.frontend == 'sincnet':
+            x = self.sincnet_extractor(input.unsqueeze(1)) 
+            x = x.transpose(1, 2)
+            x = x.unsqueeze(1)
+
+            # Pass the precomputed features (MFCC or LogMel) into the base model conv blocks
+            x = x.transpose(1, 3)  # Align dimensions for the base model
+            x = self.base.bn0(x)   # Apply the batch normalization from base
+            x = x.transpose(1, 3)
+
+            if self.training:
+                x = self.base.spec_augmenter(x)
 
         else:
             output_dict = self.base(input, mixup_lambda)

@@ -3,7 +3,10 @@ wandb/
 archive/
 a/
 aa/
+plots/
+helpers/
 weights/
+misc/
 __pycache__/
 *.pkl
 *.pth

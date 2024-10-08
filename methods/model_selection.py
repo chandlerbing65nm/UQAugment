@@ -3,7 +3,7 @@
 import torch
 from methods.panns.template import PANNS_CNN6, PANNS_RESNET22, PANNS_MOBILENETV1, PANNS_WAVEGRAM_CNN14
 from methods.hugging_face.models import CNN8RNN
-from methods.ast.models import ASTModel
+from methods.ast.template import AudioSpectrogramTransformer
 
 def get_model(args):
     if args.model_name == 'panns_cnn6':
@@ -56,10 +56,22 @@ def get_model(args):
         model = CNN8RNN(
             num_classes=args.num_classes
         )
-    if args.model_name == 'ast':
-        model = ASTModel(
-            label_dim=args.num_classes,
-            input_tdim=251
+    elif args.model_name == 'ast':
+        model = AudioSpectrogramTransformer(
+            sample_rate=args.sample_rate,
+            window_size=args.window_size,
+            hop_size=args.hop_size,
+            mel_bins=args.mel_bins,
+            fmin=args.fmin,
+            fmax=args.fmax,
+            num_classes=args.num_classes,
+            frontend=args.frontend,  # Change as needed
+            batch_size=args.batch_size,
+            freeze_base=False,
+            device=None,
+            imagenet_pretrain=True,
+            audioset_pretrain=False,
+            model_size='base384',
         )
     else: 
         raise ValueError(f"Unknown model name: {args.model_name}")

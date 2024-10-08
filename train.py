@@ -14,7 +14,7 @@ from losses.loss_selection import get_loss_function
 from frontends.frontend_selection import process_outputs
 from loggers.wandb_init import initialize_wandb
 from loggers.metrics_logging import log_metrics
-from checkpoints.ckpt_saving import save_checkpoint
+from loggers.ckpt_saving import save_checkpoint
 from datasets.dataset_selection import get_dataloaders
 
 from datasets.affia3k import get_dataloader as affia3k_loader
@@ -128,7 +128,7 @@ def main():
                 inputs = batch['waveform'].to(device)
                 targets = batch['target'].to(device)
 
-                if 'panns' in args.model_name:
+                if any(keyword in args.model_name for keyword in ('panns', 'ast')):
                     outputs = model(inputs)['clipwise_output']
                 else:
                     outputs = model(inputs)

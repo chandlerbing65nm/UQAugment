@@ -354,6 +354,8 @@ class PANNS_CNN6(nn.Module):
 
         # import ipdb; ipdb.set_trace() 
         # print(x.shape)
+        # has_nan = torch.isnan(x).any()
+        # print("Contains NaN:", has_nan.item())
 
         # Mixup on spectrogram
         if self.training and mixup_lambda is not None:

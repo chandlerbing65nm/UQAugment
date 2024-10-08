@@ -4,7 +4,8 @@ import torch
 import torch.nn.functional as F
 
 def process_outputs(model, args, inputs, targets, criterion):
-    if 'panns' in args.model_name:
+    
+    if any(keyword in args.model_name for keyword in ('panns', 'ast')):
         output_dict = model(inputs)
         outputs = output_dict['clipwise_output']
     else:

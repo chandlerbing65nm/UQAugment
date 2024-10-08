@@ -44,6 +44,11 @@ def init_layer(layer):
         if layer.bias is not None:
             nn.init.constant_(layer.bias, 0)
 
+def init_bn(bn):
+    """Initialize a Batchnorm layer. """
+    bn.bias.data.fill_(0.)
+    bn.weight.data.fill_(1.)
+
 class AudioSpectrogramTransformer(nn.Module):
     def __init__(self, sample_rate, window_size, hop_size, mel_bins, fmin, 
                  fmax, num_classes, frontend='dstft', batch_size=200,
@@ -192,7 +197,12 @@ class AudioSpectrogramTransformer(nn.Module):
             for param in self.backbone.parameters():
                 param.requires_grad = False
 
-    @autocast()
+        self.init_weight()
+
+    def init_weight(self):
+        init_bn(self.bn)
+
+    # @autocast()
     def forward(self, input):
         """
         Forward pass of the model.
@@ -279,13 +289,15 @@ class AudioSpectrogramTransformer(nn.Module):
 
         # import ipdb; ipdb.set_trace() 
         # print(x.shape)
+        # has_nan = torch.isnan(x).any()
+        # print("Contains NaN:", has_nan.item())
         
         # Get logits from ASTModel
         logits = self.backbone(x)  # Shape: (batch_size, num_classes)
 
         # If using 'diffres', include guide_loss
         if self.frontend == 'diffres':
-            return {'clipwise_output': logits, 'guide_loss': guide_loss}
+            return {'clipwise_output': logits, 'diffres_loss': guide_loss}
         else:
             return {'clipwise_output': logits}
 

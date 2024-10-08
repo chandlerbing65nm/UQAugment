@@ -166,7 +166,7 @@ class ASTModel(nn.Module):
         t_dim = test_out.shape[3]
         return f_dim, t_dim
 
-    @autocast()
+    # @autocast()
     def forward(self, x):
         """
         :param x: the input spectrogram, expected shape: (batch_size, time_frame_num, frequency_bins), e.g., (12, 1024, 128)
@@ -203,9 +203,6 @@ if __name__ == '__main__':
 
     # **3. Move the Model to the Selected Device**
     ast_mdl.to(device)
-    if torch.cuda.device_count() > 1:
-        print(f'Using {torch.cuda.device_count()} GPUs')
-        ast_mdl = nn.DataParallel(ast_mdl)
 
     # **4. Prepare the Input Data**
     batch_size = 200

@@ -1,5 +1,6 @@
 checkpoints/
 wandb/
+archive/
 a/
 aa/
 weights/

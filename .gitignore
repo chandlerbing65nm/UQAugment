@@ -1,10 +1,10 @@
-checkpoints/
-wandb/
 archive/
-plots/
+checkpoints/
 helpers/
-weights/
 misc/
+plots/
+wandb/
+weights/
 __pycache__/
 *.pkl
 *.pth

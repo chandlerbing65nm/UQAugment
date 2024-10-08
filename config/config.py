@@ -18,6 +18,7 @@ def parse_args():
     parser.add_argument('--patience', type=int, default=500, help='Patience for learning rate scheduler')
     parser.add_argument('--factor', type=float, default=0.1, help='Factor by which the learning rate will be reduced')
     parser.add_argument('--data_path', type=str, default='/mnt/users/chadolor/work/Datasets/affia3k/', help='Path to the dataset')
+    parser.add_argument('--dataset', type=str, default='affia3k', help='Dataset to use for training and validation')
     parser.add_argument('--loss', type=str, default='ce', help='Loss function to use (ce, focal, softboot, hardboot)')
     parser.add_argument('--model_name', type=str, default='cnn10', help='Name of the model to use')
     parser.add_argument('--audiomentations', action='store_true', help='Apply audiomentations')

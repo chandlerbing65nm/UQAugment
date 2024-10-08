@@ -12,9 +12,10 @@ from methods.model_selection import get_model
 from transforms.audio_transforms import get_transforms
 from losses.loss_selection import get_loss_function
 from frontends.frontend_selection import process_outputs
-from logging.wandb_init import initialize_wandb
-from logging.metrics_logging import log_metrics
+from loggers.wandb_init import initialize_wandb
+from loggers.metrics_logging import log_metrics
 from checkpoints.ckpt_saving import save_checkpoint
+from datasets.dataset_selection import get_dataloaders
 
 from datasets.affia3k import get_dataloader as affia3k_loader
 from sklearn.metrics import average_precision_score, accuracy_score
@@ -60,29 +61,8 @@ def main():
     # Get transforms
     transform = get_transforms(args)
 
-    # Initialize data loaders
-    train_dataset, train_loader = affia3k_loader(
-        split='train', 
-        batch_size=args.batch_size, 
-        sample_rate=args.sample_rate, 
-        shuffle=True, 
-        seed=args.seed, 
-        class_num=args.num_classes, 
-        drop_last=True, 
-        data_path=args.data_path, 
-        transform=transform
-    )
-    val_dataset, val_loader = affia3k_loader(
-        split='test', 
-        batch_size=args.batch_size, 
-        sample_rate=args.sample_rate, 
-        shuffle=False, 
-        seed=args.seed, 
-        class_num=args.num_classes, 
-        drop_last=True, 
-        data_path=args.data_path, 
-        transform=None
-    )
+    # Initialize data loaders using the new dataset_selection module
+    train_dataset, train_loader, val_dataset, val_loader = get_dataloaders(args, transform)
 
     # Loss and optimizer
     criterion = get_loss_function(args)

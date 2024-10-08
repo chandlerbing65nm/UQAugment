@@ -8,7 +8,7 @@
 #SBATCH --partition=gpu            # Partition to submit to
 #SBATCH --gres=gpu:1               # Number of GPUs
 #SBATCH --time=48:00:00            # Time limit (hh:mm:ss)
-#SBATCH --output=*PANNS-CNN6(dropout=0.5)+DSTFT.out
+#SBATCH --output=slurm/affia3k/*PANNS-CNN6(dropout=0.5)+DSTFT.out
 
 # Load necessary modules (if required)
 module purge

@@ -1,8 +1,6 @@
 checkpoints/
 wandb/
 archive/
-a/
-aa/
 plots/
 helpers/
 weights/

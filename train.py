@@ -12,8 +12,8 @@ from methods.model_selection import get_model
 from transforms.audio_transforms import get_transforms
 from losses.loss_selection import get_loss_function
 from frontends.frontend_selection import process_outputs
-from wandb_logging.wandb_init import initialize_wandb
-from wandb_logging.metrics_logging import log_metrics
+from logging.wandb_init import initialize_wandb
+from logging.metrics_logging import log_metrics
 from checkpoints.ckpt_saving import save_checkpoint
 
 from datasets.affia3k import get_dataloader as affia3k_loader

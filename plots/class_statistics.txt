@@ -1,8 +1,0 @@
-Total samples: 400.0
-Class distribution (counts): [100. 100. 100. 100.]
-Class distribution (percentages): [25. 25. 25. 25.]
-Mean: 100.0
-Median: 100.0
-Standard Deviation: 0.0
-Max count: 100.0
-Min count: 100.0

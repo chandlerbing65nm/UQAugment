@@ -18,7 +18,7 @@ def get_model(args):
             frontend=args.frontend,
             batch_size=args.batch_size,
         )
-        model.load_from_pretrain("./weights/Cnn6_mAP=0.343.pth")
+        model.load_from_pretrain("/scratch/project_465001389/chandler_scratch/Projects/UWAC/weights/Cnn6_mAP=0.343.pth")
     elif args.model_name == 'panns_resnet22':
         model = PANNS_RESNET22(
             sample_rate=args.sample_rate, 
@@ -29,7 +29,7 @@ def get_model(args):
             fmax=args.fmax, 
             num_classes=args.num_classes
         )
-        model.load_from_pretrain("./weights/ResNet22_mAP=0.430.pth") 
+        model.load_from_pretrain("/scratch/project_465001389/chandler_scratch/Projects/UWAC/weights/ResNet22_mAP=0.430.pth") 
     elif args.model_name == 'panns_mobilenetv1':
         model = PANNS_MOBILENETV1(
             sample_rate=args.sample_rate, 
@@ -40,7 +40,7 @@ def get_model(args):
             fmax=args.fmax, 
             num_classes=args.num_classes
         )
-        model.load_from_pretrain("./weights/MobileNetV1_mAP=0.389.pth") 
+        model.load_from_pretrain("/scratch/project_465001389/chandler_scratch/Projects/UWAC/weights/MobileNetV1_mAP=0.389.pth") 
     elif args.model_name == 'panns_wavegram_cnn14':
         model = PANNS_WAVEGRAM_CNN14(
             sample_rate=args.sample_rate, 
@@ -51,7 +51,7 @@ def get_model(args):
             fmax=args.fmax, 
             num_classes=args.num_classes
         )
-        model.load_from_pretrain("./weights/Wavegram_Cnn14_mAP=0.389.pth") 
+        model.load_from_pretrain("/scratch/project_465001389/chandler_scratch/Projects/UWAC/weights/Wavegram_Cnn14_mAP=0.389.pth") 
     elif args.model_name == 'cnn8rnn':
         model = CNN8RNN(
             num_classes=args.num_classes

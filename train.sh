@@ -1,21 +1,21 @@
 #!/bin/bash
 
-#SBATCH --job-name=affia3k         # Job name (optional)
-#SBATCH --ntasks=1                 # Number of tasks
-#SBATCH --cpus-per-task=4          # Number of CPUs per task
-#SBATCH --nodes=1                  # Number of nodes
-#SBATCH --mem=16G                  # Total memory allocation
-#SBATCH --partition=gpu            # Partition to submit to
-#SBATCH --gres=gpu:1               # Number of GPUs
-#SBATCH --time=48:00:00            # Time limit (hh:mm:ss)
-#SBATCH --output=slurm/affia3k/*AST+LEAF.out
+#SBATCH --job-name=affia3k         
+#SBATCH --ntasks=1                 
+#SBATCH --cpus-per-task=4         
+#SBATCH --ntasks-per-node=1
+#SBATCH --mem-per-cpu=8G
+#SBATCH --gpus-per-node=1
+#SBATCH --nodes=1                                  
+#SBATCH --partition=standard-g            
+#SBATCH --time=24:00:00           
+#SBATCH --account=project_465001389
+#SBATCH --output=/users/doloriel/work/slurm/affia3k/*AST+DiffRes(trial).out
 
 # Load necessary modules (if required)
-module purge
-module load Python/3.10
 conda init
 conda activate uwac
-cd Repositories/UWAC
+cd Repo/UWAC
 
 # Run your job
 # python train.py \
@@ -30,6 +30,6 @@ cd Repositories/UWAC
 
 python train.py \
     --model_name "ast" \
-    --frontend "leaf" \
-    --batch_size 40 \
+    --frontend "diffres" \
+    --batch_size 200 \
     --wandb_mode "offline" \

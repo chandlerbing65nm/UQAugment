@@ -10,7 +10,7 @@ import torch.nn as nn
 from torch.cuda.amp import autocast
 import os
 import wget
-os.environ['TORCH_HOME'] = './weights'
+os.environ['TORCH_HOME'] = '/scratch/project_465001389/chandler_scratch/Projects/UWAC/weights'
 import timm
 from timm.models.layers import to_2tuple,trunc_normal_
 
@@ -125,11 +125,11 @@ class ASTModel(nn.Module):
                 raise ValueError('currently only has base384 AudioSet pretrained model.')
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-            if os.path.exists('./weights/audioset_10_10_0.4593.pth') == False:
+            if os.path.exists('/scratch/project_465001389/chandler_scratch/Projects/UWAC/weights/audioset_10_10_0.4593.pth') == False:
                 # this model performs 0.4593 mAP on the audioset eval set
                 audioset_mdl_url = 'https://www.dropbox.com/s/cv4knew8mvbrnvq/audioset_0.4593.pth?dl=1'
-                wget.download(audioset_mdl_url, out='./weights/audioset_10_10_0.4593.pth')
-            sd = torch.load('./weights/audioset_10_10_0.4593.pth', map_location=device)
+                wget.download(audioset_mdl_url, out='/scratch/project_465001389/chandler_scratch/Projects/UWAC/weights/audioset_10_10_0.4593.pth')
+            sd = torch.load('/scratch/project_465001389/chandler_scratch/Projects/UWAC/weights/audioset_10_10_0.4593.pth', map_location=device)
             
             audio_model = ASTModel(label_dim=527, fstride=10, tstride=10, input_fdim=128, input_tdim=1024, imagenet_pretrain=False, audioset_pretrain=False, model_size='base384', verbose=False)
             audio_model = torch.nn.DataParallel(audio_model)

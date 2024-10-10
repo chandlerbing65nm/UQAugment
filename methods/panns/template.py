@@ -23,10 +23,10 @@ import librosa
 from methods.panns.pytorch_utils import *
 from methods.panns.models import *
 from frontends.leaf.frontend import Leaf
-from frontends.diffres.frontend import DiffRes
 from frontends.dmel.frontend import DMel
 from frontends.dstft.frontend import DSTFT
 from frontends.sincnet.frontend import SincNet
+from frontends.diffres.frontend import DiffRes
 
 class PANNS_CNN6(nn.Module):
     def __init__(self, sample_rate, window_size, hop_size, mel_bins, fmin, 

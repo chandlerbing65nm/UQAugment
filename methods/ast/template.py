@@ -311,7 +311,7 @@ if __name__ == '__main__':
     fmax = sample_rate//2
     num_classes = 4 
     batch_size = 40
-    frontend = 'diffres'
+    frontend = 'leaf'
 
     # Initialize the model
     model = AudioSpectrogramTransformer(
@@ -327,7 +327,7 @@ if __name__ == '__main__':
         freeze_base=False,
         device=None,
         imagenet_pretrain=True,
-        audioset_pretrain=False,
+        audioset_pretrain=True,
         model_size='base384',
     )
 

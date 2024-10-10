@@ -70,7 +70,7 @@ def get_model(args):
             freeze_base=False,
             device=None,
             imagenet_pretrain=True,
-            audioset_pretrain=False,
+            audioset_pretrain=True,
             model_size='base384',
         )
     else: 

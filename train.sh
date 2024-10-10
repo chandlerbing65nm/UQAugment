@@ -8,14 +8,14 @@
 #SBATCH --partition=gpu            # Partition to submit to
 #SBATCH --gres=gpu:1               # Number of GPUs
 #SBATCH --time=48:00:00            # Time limit (hh:mm:ss)
-#SBATCH --output=slurm/affia3k/*PANNS-CNN6(dropout=0.5)+DSTFT.out
+#SBATCH --output=slurm/affia3k/*AST+LEAF.out
 
 # Load necessary modules (if required)
 module purge
 module load Python/3.10
 conda init
-conda activate ffia
-cd Repositories/FFIA
+conda activate uwac
+cd Repositories/UWAC
 
 # Run your job
 # python train.py \
@@ -29,6 +29,7 @@ cd Repositories/FFIA
 #     --wand_project "affia-3k" \
 
 python train.py \
-    --model_name "panns_cnn6" \
-    --frontend "dstft" \
+    --model_name "ast" \
+    --frontend "leaf" \
+    --batch_size 40 \
     --wandb_mode "offline" \

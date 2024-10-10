@@ -108,6 +108,10 @@ def main():
         all_train_outputs = np.concatenate(all_train_outputs, axis=0)
         all_train_targets_onehot = label_binarize(all_train_targets, classes=np.arange(args.num_classes))
 
+        # import ipdb; ipdb.set_trace() 
+        # unique, counts = np.unique(all_train_targets, return_counts=True)
+        # print("Training class distribution:", dict(zip(unique, counts)))
+
         train_acc = accuracy_score(all_train_targets, all_train_outputs.argmax(axis=-1))
         train_map = average_precision_score(all_train_targets_onehot, all_train_outputs, average='macro')
         epoch_loss = running_loss / len(train_loader.dataset)

@@ -52,7 +52,7 @@ def data_generator(seed, test_sample_per_class, data_path='./'):
 
     random_state = np.random.RandomState(seed)
     strong_list = get_wav_name(split='strong', data_path=data_path)
-    medium_list = get_wav_name(split='medium', data_path=data_path)
+    medium_list = get_wav_name(split='middle', data_path=data_path)
     weak_list = get_wav_name(split='weak', data_path=data_path)
     none_list = get_wav_name(split='none', data_path=data_path)
 

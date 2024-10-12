@@ -10,12 +10,12 @@
 #SBATCH --partition=standard-g            
 #SBATCH --time=24:00:00           
 #SBATCH --account=project_465001389
-#SBATCH --output=/users/doloriel/work/slurm/affia3k/*AST.out
+#SBATCH --output=/users/doloriel/work/slurm/affia3k/cnn6-diffres-lumi.out
 
 # Load necessary modules (if required)
 conda init
 conda activate uwac
-cd Repo/UWAC
+cd /users/doloriel/work/Repo/UWAC
 
 # Run your job
 # python train.py \
@@ -29,7 +29,7 @@ cd Repo/UWAC
 #     --wand_project "affia-3k" \
 
 python train.py \
-    --model_name "ast" \
-    --frontend "logmel" \
+    --model_name "panns_cnn6" \
+    --frontend "diffres" \
     --batch_size 200 \
     --wandb_mode "offline" \

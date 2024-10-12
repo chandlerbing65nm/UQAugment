@@ -105,6 +105,28 @@ class Base(nn.Module):
     #     out = scatter_add((feature * score).permute(0, 2, 1), int_cumsum, out=out)
     #     return out.permute(0, 2, 1)
 
+    def calculate_scatter_avgpool(self, score, feature, out_len):
+        bs, in_seq_len, feat_dim = feature.size()
+        cumsum = torch.cumsum(score, dim=1)
+        
+        # Handle floating point precision issues
+        cumsum[cumsum % 1 < 1e-2] -= 1e-2
+
+        int_cumsum = torch.floor(cumsum.float()).permute(0, 2, 1).long()
+        int_cumsum = torch.clip(int_cumsum, min=0, max=out_len - 1)
+        
+        # Prepare the output tensor
+        out = torch.zeros((bs, feat_dim, out_len), device=score.device)
+        
+        # Prepare source tensor for scatter_reduce
+        src = (feature * score).permute(0, 2, 1)  # Shape: [bs, feat_dim, in_seq_len]
+        
+        # Perform scatter_add using scatter_reduce
+        out.scatter_reduce_(dim=2, index=int_cumsum, src=src, reduce='sum')
+        
+        return out.permute(0, 2, 1)
+
+
     # def calculate_scatter_maxpool(self, score, feature, out_len):
 
     #     # cumsum: [3, 1056, 1]
@@ -149,28 +171,6 @@ class Base(nn.Module):
         out.scatter_reduce_(dim=2, index=int_cumsum, src=src, reduce='amax')  # 'amax' is used for max
         
         return out.permute(0, 2, 1) * (1 / (1 - self.dimension_reduction_rate))
-
-
-    def calculate_scatter_avgpool(self, score, feature, out_len):
-        bs, in_seq_len, feat_dim = feature.size()
-        cumsum = torch.cumsum(score, dim=1)
-        
-        # Handle floating point precision issues
-        cumsum[cumsum % 1 < 1e-2] -= 1e-2
-
-        int_cumsum = torch.floor(cumsum.float()).permute(0, 2, 1).long()
-        int_cumsum = torch.clip(int_cumsum, min=0, max=out_len - 1)
-        
-        # Prepare the output tensor
-        out = torch.zeros((bs, feat_dim, out_len), device=score.device)
-        
-        # Prepare source tensor for scatter_reduce
-        src = (feature * score).permute(0, 2, 1)  # Shape: [bs, feat_dim, in_seq_len]
-        
-        # Perform scatter_add using scatter_reduce
-        out.scatter_reduce_(dim=2, index=int_cumsum, src=src, reduce='sum')
-        
-        return out.permute(0, 2, 1)
 
     def locate_first_and_last_position(self, mask):
         """Locate the first non-negative in a row, and the element before the last non-negative element in a row

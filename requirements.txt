@@ -2,7 +2,6 @@
 
 matplotlib==3.9.1
 h5py
-pydiffres
 librosa
 torchlibrosa
 huggingface-hub

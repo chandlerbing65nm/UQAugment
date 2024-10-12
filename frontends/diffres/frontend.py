@@ -6,7 +6,7 @@ from frontends.diffres.pydiffres.diffres import DiffRes as pydiffres
 
 
 class DiffRes(nn.Module):
-    def __init__(self, in_t_dim, in_f_dim, dimension_reduction_rate=0.75, learn_pos_emb=False):
+    def __init__(self, in_t_dim, in_f_dim, dimension_reduction_rate=0.6, learn_pos_emb=False):
         super(DiffRes, self).__init__()
         self.model = pydiffres(
             in_t_dim=in_t_dim,

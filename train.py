@@ -33,11 +33,10 @@ os.environ['WANDB_CACHE_DIR'] = '/scratch/project_465001389/chandler_scratch/Pro
 
 def set_seed(seed):
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
-    torch.backends.cudnn.deterministic = False
-    torch.backends.cudnn.benchmark = True
 
 def main():
     args = parse_args()
@@ -67,7 +66,7 @@ def main():
     # Loss and optimizer
     criterion = get_loss_function(args)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate, betas=(0.9, 0.999), weight_decay=0)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=args.patience, factor=args.factor)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=args.patience, factor=args.factor)
 
     if args.lr_warmup:
         warmup_scheduler = torch.optim.lr_scheduler.LambdaLR(
@@ -75,7 +74,7 @@ def main():
             lr_lambda=lambda epoch: min(1.0, epoch / args.warmup_epochs)
         )
 
-    best_val_loss = np.inf
+    best_val_map = -np.inf
     best_val_acc = -np.inf
 
     # Training loop
@@ -106,20 +105,17 @@ def main():
         # Compute training metrics
         all_train_targets = np.concatenate(all_train_targets, axis=0)
         all_train_outputs = np.concatenate(all_train_outputs, axis=0)
-        all_train_targets_onehot = label_binarize(all_train_targets, classes=np.arange(args.num_classes))
 
         # import ipdb; ipdb.set_trace() 
         # unique, counts = np.unique(all_train_targets, return_counts=True)
         # print("Training class distribution:", dict(zip(unique, counts)))
 
         train_acc = accuracy_score(all_train_targets, all_train_outputs.argmax(axis=-1))
-        train_map = average_precision_score(all_train_targets_onehot, all_train_outputs, average='macro')
         epoch_loss = running_loss / len(train_loader.dataset)
 
         print(f'Epoch [{epoch+1}/{args.max_epoch}], '
               f'Train Loss: {epoch_loss:.4f}, '
-              f'Accuracy: {train_acc:.4f}, '
-              f'mAP: {train_map:.4f}')
+              f'Accuracy: {train_acc:.4f}, ')
 
         # Validation
         model.eval()
@@ -137,24 +133,20 @@ def main():
                 else:
                     outputs = model(inputs)
 
-                loss = criterion(outputs, targets.argmax(dim=-1))
-                val_loss += loss.item() * inputs.size(0)
+                outputs = torch.softmax(outputs, dim=-1) # for classification metrics
 
                 # Store predictions and targets
                 all_val_targets.append(targets.argmax(dim=-1).cpu().numpy())
                 all_val_outputs.append(outputs.detach().cpu().numpy())
 
         # Compute validation metrics
-        val_loss /= len(val_loader.dataset)
         all_val_targets = np.concatenate(all_val_targets, axis=0)
         all_val_outputs = np.concatenate(all_val_outputs, axis=0)
-        all_val_targets_onehot = label_binarize(all_val_targets, classes=np.arange(args.num_classes))
 
         val_acc = accuracy_score(all_val_targets, all_val_outputs.argmax(axis=-1))
-        val_map = average_precision_score(all_val_targets_onehot, all_val_outputs, average='macro')
+        val_map = average_precision_score(all_val_targets, all_val_outputs, average='macro')
 
         print(f'Epoch [{epoch+1}/{args.max_epoch}], '
-              f'Val Loss: {val_loss:.4f}, '
               f'Val Accuracy: {val_acc:.4f}, '
               f'Val mAP: {val_map:.4f}')
 
@@ -162,21 +154,19 @@ def main():
         if args.lr_warmup and epoch < args.warmup_epochs:
             warmup_scheduler.step()
         else:
-            scheduler.step(val_loss)
+            scheduler.step(val_acc)
 
         # Log metrics to WandB
         log_metrics({
             "Train Loss": epoch_loss,
             "Train Accuracy": train_acc,
-            "Train mAP": train_map,
-            "Validation Loss": val_loss,
             "Validation Accuracy": val_acc,
             "Validation mAP": val_map
         })
 
         # Save checkpoints
-        best_val_loss, best_val_acc = save_checkpoint(
-            model, args, best_val_loss, best_val_acc, val_loss, val_acc
+        best_val_map, best_val_acc = save_checkpoint(
+            model, args, best_val_map, best_val_acc, val_map, val_acc
         )
 
     # Optionally, save the final model

@@ -346,9 +346,7 @@ class PANNS_CNN6(nn.Module):
         else:
             output_dict = self.base(input, mixup_lambda)
             embedding = output_dict['embedding']
-
             clipwise_output = self.fc_transfer(embedding)
-            output_dict['clipwise_output'] = clipwise_output
 
             return output_dict
 
@@ -362,13 +360,13 @@ class PANNS_CNN6(nn.Module):
             x = do_mixup(x, mixup_lambda)
 
         x = self.base.conv_block1(x, pool_size=(2, 2), pool_type='avg')
-        x = F.dropout(x, p=0.5, training=self.training)
+        x = F.dropout(x, p=0.2, training=self.training)
         x = self.base.conv_block2(x, pool_size=(2, 2), pool_type='avg')
-        x = F.dropout(x, p=0.5, training=self.training)
+        x = F.dropout(x, p=0.2, training=self.training)
         x = self.base.conv_block3(x, pool_size=(2, 2), pool_type='avg')
-        x = F.dropout(x, p=0.5, training=self.training)
+        x = F.dropout(x, p=0.2, training=self.training)
         x = self.base.conv_block4(x, pool_size=(2, 2), pool_type='avg')
-        x = F.dropout(x, p=0.5, training=self.training)
+        x = F.dropout(x, p=0.2, training=self.training)
         x = torch.mean(x, dim=3)
 
         (x1, _) = torch.max(x, dim=2)

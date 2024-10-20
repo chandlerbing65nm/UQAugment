@@ -24,33 +24,33 @@ class FrameAlignment(nn.Module):
         """
         super(FrameAlignment, self).__init__()
 
-        # Learnable template for warping alignment (initialized randomly)
+        # Learnable template for aligning alignment (initialized randomly)
         self.learned_template = nn.Parameter(torch.randn(1, seq_len, 1))
 
     def forward(self, score, feature):
         """
-        Forward function that computes a warped feature representation
-        using a differentiable DTW mechanism conditioned on the score tensor.
+        Forward function that computes a aligned feature representation
+        using a differentiable FrameAlignment mechanism conditioned on the score tensor.
 
         Args:
             score (Tensor): A tensor of shape [batch, seq_len, 1] representing the conditioning score.
             feature (Tensor): A tensor of shape [batch, seq_len, feat_dim] representing the features.
         
         Returns:
-            out_feature (Tensor): Warped output feature of shape [batch, seq_len, feat_dim].
+            out_feature (Tensor): aligned output feature of shape [batch, seq_len, feat_dim].
         """
         batch_size, seq_len, feat_dim = feature.size()
 
         # Step 1: Create a pairwise distance matrix between the score and the learnable template
         distance_matrix = self.compute_pairwise_distances(score)
 
-        # Step 2: Apply softmax to get a differentiable alignment path (soft warping path)
-        soft_warping_path = self.compute_soft_warping_path(distance_matrix)
+        # Step 2: Apply softmax to get a differentiable alignment path (soft aligning path)
+        soft_aligning_path = self.compute_soft_aligning_path(distance_matrix)
 
-        # Step 3: Warp the features based on the soft warping path
-        warped_feature = self.apply_warping(feature, soft_warping_path)
+        # Step 3: align the features based on the soft aligning path
+        aligned_feature = self.apply_aligning(feature, soft_aligning_path)
 
-        return warped_feature, soft_warping_path
+        return aligned_feature, soft_aligning_path
 
     def compute_pairwise_distances(self, score):
         """
@@ -69,36 +69,36 @@ class FrameAlignment(nn.Module):
         
         return distance_matrix
 
-    def compute_soft_warping_path(self, distance_matrix):
+    def compute_soft_aligning_path(self, distance_matrix):
         """
-        Compute a soft alignment matrix (soft warping path) using softmax over the distances.
+        Compute a soft alignment matrix (soft aligning path) using softmax over the distances.
 
         Args:
             distance_matrix (Tensor): A tensor of shape [batch, seq_len, seq_len].
         
         Returns:
-            soft_warping_path (Tensor): A soft alignment path, shape [batch, seq_len, seq_len].
+            soft_aligning_path (Tensor): A soft alignment path, shape [batch, seq_len, seq_len].
         """
-        # Apply softmax to get soft warping path, normalized across sequence length dimension
+        # Apply softmax to get soft aligning path, normalized across sequence length dimension
         # Improve numerical stability by subtracting the max value along the sequence dimension
-        soft_warping_path = F.softmax(-distance_matrix - distance_matrix.max(dim=-1, keepdim=True)[0], dim=-1)  # [batch, seq_len, seq_len]
-        return soft_warping_path
+        soft_aligning_path = F.softmax(-distance_matrix - distance_matrix.max(dim=-1, keepdim=True)[0], dim=-1)  # [batch, seq_len, seq_len]
+        return soft_aligning_path
 
-    def apply_warping(self, feature, soft_warping_path):
+    def apply_aligning(self, feature, soft_aligning_path):
         """
-        Apply the warping to the feature using the soft warping path.
+        Apply the aligning to the feature using the soft aligning path.
 
         Args:
             feature (Tensor): A tensor of shape [batch, seq_len, feat_dim].
-            soft_warping_path (Tensor): A tensor of shape [batch, seq_len, seq_len].
+            soft_aligning_path (Tensor): A tensor of shape [batch, seq_len, seq_len].
         
         Returns:
-            warped_feature (Tensor): Warped feature of shape [batch, seq_len, feat_dim].
+            aligned_feature (Tensor): aligned feature of shape [batch, seq_len, feat_dim].
         """
-        # Use einsum to apply warping across the sequence length dimension
-        warped_feature = torch.einsum('bij,bjf->bif', soft_warping_path, feature)  # [batch, seq_len, feat_dim]
+        # Use einsum to apply aligning across the sequence length dimension
+        aligned_feature = torch.einsum('bij,bjf->bif', soft_aligning_path, feature)  # [batch, seq_len, feat_dim]
         
-        return warped_feature
+        return aligned_feature
 
 
 class NAFA(nn.Module):
@@ -121,7 +121,7 @@ class NAFA(nn.Module):
         )
         
         # Stochastic gating layer to learn when to modulate frames
-        self.warp = FrameAlignment(seq_len=self.input_seq_length, feat_dim=self.input_f_dim)
+        self.align = FrameAlignment(seq_len=self.input_seq_length, feat_dim=self.input_f_dim)
 
         # Sparsity regularization strength
         self.sparsity_lambda = 1.0
@@ -133,9 +133,9 @@ class NAFA(nn.Module):
         score = torch.sigmoid(self.model(x.permute(0, 2, 1)).permute(0, 2, 1))
         score, _ = self.monotonic_score_norm(score, total_length=self.input_seq_length)
 
-        # warp_frame = self.warp_frame(gated_score, x_modulated.exp(), total_length=self.output_seq_length)
-        warp_frame, warping_path = self.warp(score, x.exp())
-        warp_frame = torch.log(warp_frame + EPS)
+        # align_frame = self.align_frame(gated_score, x_modulated.exp(), total_length=self.output_seq_length)
+        align_frame, aligning_path = self.align(score, x.exp())
+        align_frame = torch.log(align_frame + EPS)
 
         # import ipdb; ipdb.set_trace() 
         # print(gated_score[0:3])
@@ -145,7 +145,7 @@ class NAFA(nn.Module):
         # Final outputs
         ret["x"] = x
         ret["score"] = score
-        ret["features"] = warp_frame
+        ret["features"] = align_frame
         ret["guide_loss"] = guide_loss
 
         ret["total_loss"] = ret["guide_loss"]

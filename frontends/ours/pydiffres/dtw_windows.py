@@ -14,69 +14,59 @@ RESCALE_INTERVEL_MIN = 1e-4
 RESCALE_INTERVEL_MAX = 1 - 1e-4
 
 class DifferentiableDTW(nn.Module):
-    def __init__(self, seq_len, feat_dim, dropout_prob=0.2, l2_reg_weight=1e-7):
+    def __init__(self, seq_len, feat_dim, window_size=5):
         """
-        Initialize the DifferentiableDTW module with a learnable template for alignment,
-        Warped Feature Dropout (WarpDrop), and L2 regularization on the warped features.
+        Initialize the DifferentiableDTW module with a learnable template for alignment
+        and a local alignment regularization.
 
         Args:
             seq_len (int): The length of the input sequence.
             feat_dim (int): The dimensionality of each feature.
-            dropout_prob (float): Probability of dropping elements in the warping path.
-            l2_reg_weight (float): Weight of the L2 regularization on the warped features.
+            window_size (int): The size of the local window for alignment regularization.
         """
         super(DifferentiableDTW, self).__init__()
 
         # Learnable template for warping alignment (initialized randomly)
         self.learned_template = nn.Parameter(torch.randn(1, seq_len, 1))
-
-        # Dropout probability for the warping path
-        self.dropout = nn.Dropout(p=dropout_prob)
-
-        # L2 regularization weight
-        self.l2_reg_weight = l2_reg_weight
+        self.window_size = window_size
 
     def forward(self, score, feature):
         """
         Forward function that computes a warped feature representation
-        using a differentiable DTW mechanism conditioned on the score tensor,
-        with Warped Feature Dropout and L2 regularization.
+        using a differentiable DTW mechanism conditioned on the score tensor.
 
         Args:
             score (Tensor): A tensor of shape [batch, seq_len, 1] representing the conditioning score.
             feature (Tensor): A tensor of shape [batch, seq_len, feat_dim] representing the features.
-
+        
         Returns:
             warped_feature (Tensor): Warped output feature of shape [batch, seq_len, feat_dim].
-            soft_warping_path (Tensor): The soft alignment path used for warping.
-            l2_reg_loss (Tensor): L2 regularization loss on the warped features.
+            soft_warping_path (Tensor): The soft alignment path.
+            local_alignment_loss (Tensor): The local alignment loss value.
         """
         batch_size, seq_len, feat_dim = feature.size()
 
-        # Step 1: Create a pairwise distance matrix between the score and the learned template
+        # Step 1: Create a pairwise distance matrix between the score and the learnable template
         distance_matrix = self.compute_pairwise_distances(score)
 
         # Step 2: Apply softmax to get a differentiable alignment path (soft warping path)
         soft_warping_path = self.compute_soft_warping_path(distance_matrix)
 
-        # Step 3: Apply Warped Feature Dropout to the soft warping path
-        soft_warping_path_dropped = self.dropout(soft_warping_path)
+        # Step 3: Warp the features based on the soft warping path
+        warped_feature = self.apply_warping(feature, soft_warping_path)
 
-        # Step 4: Warp the features based on the dropped soft warping path
-        warped_feature = self.apply_warping(feature, soft_warping_path_dropped)
+        # Step 4: Compute local alignment loss
+        local_alignment_loss = self.compute_local_alignment_loss(feature, warped_feature)
 
-        # Step 5: Compute L2 regularization loss on the warped features
-        l2_reg_loss = self.l2_reg_weight * torch.norm(warped_feature, p=2)
-
-        return warped_feature, l2_reg_loss
+        return warped_feature, local_alignment_loss
 
     def compute_pairwise_distances(self, score):
         """
         Compute pairwise distances between score matrix and the learned template for alignment.
-
+        
         Args:
             score (Tensor): A tensor of shape [batch, seq_len, 1].
-
+        
         Returns:
             distance_matrix (Tensor): Pairwise distances for alignment, shape [batch, seq_len, seq_len].
         """
@@ -90,16 +80,13 @@ class DifferentiableDTW(nn.Module):
 
         Args:
             distance_matrix (Tensor): A tensor of shape [batch, seq_len, seq_len].
-
+        
         Returns:
             soft_warping_path (Tensor): A soft alignment path, shape [batch, seq_len, seq_len].
         """
         # Apply softmax to get soft warping path, normalized across sequence length dimension
         # Improve numerical stability by subtracting the max value along the sequence dimension
-        soft_warping_path = F.softmax(
-            -distance_matrix - distance_matrix.max(dim=-1, keepdim=True)[0],
-            dim=-1
-        )  # [batch, seq_len, seq_len]
+        soft_warping_path = F.softmax(-distance_matrix - distance_matrix.max(dim=-1, keepdim=True)[0], dim=-1)
         return soft_warping_path
 
     def apply_warping(self, feature, soft_warping_path):
@@ -109,13 +96,51 @@ class DifferentiableDTW(nn.Module):
         Args:
             feature (Tensor): A tensor of shape [batch, seq_len, feat_dim].
             soft_warping_path (Tensor): A tensor of shape [batch, seq_len, seq_len].
-
+        
         Returns:
             warped_feature (Tensor): Warped feature of shape [batch, seq_len, feat_dim].
         """
         # Use einsum to apply warping across the sequence length dimension
         warped_feature = torch.einsum('bij,bjf->bif', soft_warping_path, feature)  # [batch, seq_len, feat_dim]
         return warped_feature
+
+    def compute_local_alignment_loss(self, feature, warped_feature):
+        """
+        Compute the local alignment loss by measuring the similarity between
+        local windows of the input feature and the warped feature.
+
+        Args:
+            feature (Tensor): Original input feature of shape [batch, seq_len, feat_dim].
+            warped_feature (Tensor): Warped feature of shape [batch, seq_len, feat_dim].
+
+        Returns:
+            local_loss (Tensor): Scalar tensor representing the local alignment loss.
+        """
+        batch_size, seq_len, feat_dim = feature.size()
+        window_size = self.window_size
+
+        # Compute the number of windows
+        num_windows = seq_len - window_size + 1
+
+        # Extract local windows and compute cosine similarity
+        input_windows = feature.unfold(dimension=1, size=window_size, step=1)  # [batch, num_windows, window_size, feat_dim]
+        warped_windows = warped_feature.unfold(dimension=1, size=window_size, step=1)  # [batch, num_windows, window_size, feat_dim]
+
+        # Flatten the windows
+        input_windows_flat = input_windows.contiguous().view(batch_size, num_windows, -1)  # [batch, num_windows, window_size * feat_dim]
+        warped_windows_flat = warped_windows.contiguous().view(batch_size, num_windows, -1)  # [batch, num_windows, window_size * feat_dim]
+
+        # Normalize the vectors
+        input_norm = F.normalize(input_windows_flat, dim=2)
+        warped_norm = F.normalize(warped_windows_flat, dim=2)
+
+        # Compute cosine similarity for each window
+        cos_sim = (input_norm * warped_norm).sum(dim=2)  # [batch, num_windows]
+
+        # Compute local loss (1 - cosine similarity), averaged over windows and batch
+        local_loss = (1 - cos_sim).mean()
+
+        return local_loss
 
 
 class Ours(nn.Module):
@@ -151,11 +176,11 @@ class Ours(nn.Module):
         score, _ = self.monotonic_score_norm(score, total_length=self.input_seq_length)
 
         # warp_frame = self.warp_frame(gated_score, x_modulated.exp(), total_length=self.output_seq_length)
-        warp_frame, reg_loss = self.warp(score, x.exp())
+        warp_frame, align_loss = self.warp(score, x.exp())
         warp_frame = torch.log(warp_frame + EPS)
 
         # import ipdb; ipdb.set_trace() 
-        # print(reg_loss.item())
+        # print(align_loss.item())
 
         guide_loss, _ = self.guide_loss(x, importance_score=score)
 
@@ -164,9 +189,9 @@ class Ours(nn.Module):
         ret["score"] = score
         ret["features"] = warp_frame
         ret["guide_loss"] = guide_loss
-        ret["reg_loss"] = reg_loss
+        ret["align_loss"] = align_loss
 
-        ret["total_loss"] = ret["guide_loss"] + ret["reg_loss"]
+        ret["total_loss"] = ret["guide_loss"] + ret["align_loss"]
 
         return ret
 

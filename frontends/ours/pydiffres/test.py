@@ -3,28 +3,21 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class DifferentiableDTW(nn.Module):
-    def __init__(self, seq_len, feat_dim, dropout_rate=0.5):
+    def __init__(self, seq_len, feat_dim, window_size=5):
         """
-        Initialize the DifferentiableDTW module with a learnable template for alignment.
+        Initialize the DifferentiableDTW module with a learnable template for alignment
+        and a local alignment regularization.
 
         Args:
             seq_len (int): The length of the input sequence.
             feat_dim (int): The dimensionality of each feature.
-            dropout_rate (float): Dropout rate for regularization.
+            window_size (int): The size of the local window for alignment regularization.
         """
         super(DifferentiableDTW, self).__init__()
 
         # Learnable template for warping alignment (initialized randomly)
         self.learned_template = nn.Parameter(torch.randn(1, seq_len, 1))
-
-        # Batch normalization layer for the warped features
-        self.batch_norm = nn.BatchNorm1d(feat_dim)
-
-        # Dropout layer
-        self.dropout = nn.Dropout(dropout_rate)
-
-        # Store sequence length for alignment regularization
-        self.seq_len = seq_len
+        self.window_size = window_size
 
     def forward(self, score, feature):
         """
@@ -37,8 +30,8 @@ class DifferentiableDTW(nn.Module):
         
         Returns:
             warped_feature (Tensor): Warped output feature of shape [batch, seq_len, feat_dim].
-            soft_warping_path (Tensor): Soft alignment path of shape [batch, seq_len, seq_len].
-            alignment_reg (Tensor): Alignment regularization term (scalar).
+            soft_warping_path (Tensor): The soft alignment path.
+            local_alignment_loss (Tensor): The local alignment loss value.
         """
         batch_size, seq_len, feat_dim = feature.size()
 
@@ -51,13 +44,10 @@ class DifferentiableDTW(nn.Module):
         # Step 3: Warp the features based on the soft warping path
         warped_feature = self.apply_warping(feature, soft_warping_path)
 
-        # Step 4: Apply batch normalization and dropout to the warped features
-        warped_feature = self.normalize_and_dropout(warped_feature)
+        # Step 4: Compute local alignment loss
+        local_alignment_loss = self.compute_local_alignment_loss(feature, warped_feature)
 
-        # Step 5: Compute the alignment regularization term
-        alignment_reg = self.compute_alignment_regularization(soft_warping_path)
-
-        return warped_feature, soft_warping_path, alignment_reg
+        return warped_feature, soft_warping_path, local_alignment_loss
 
     def compute_pairwise_distances(self, score):
         """
@@ -71,7 +61,6 @@ class DifferentiableDTW(nn.Module):
         """
         # Compute pairwise distances between score and the learned template
         distance_matrix = torch.cdist(score, self.learned_template)  # [batch, seq_len, seq_len]
-        
         return distance_matrix
 
     def compute_soft_warping_path(self, distance_matrix):
@@ -86,10 +75,7 @@ class DifferentiableDTW(nn.Module):
         """
         # Apply softmax to get soft warping path, normalized across sequence length dimension
         # Improve numerical stability by subtracting the max value along the sequence dimension
-        soft_warping_path = F.softmax(
-            -distance_matrix - distance_matrix.max(dim=-1, keepdim=True)[0],
-            dim=-1
-        )  # [batch, seq_len, seq_len]
+        soft_warping_path = F.softmax(-distance_matrix - distance_matrix.max(dim=-1, keepdim=True)[0], dim=-1)
         return soft_warping_path
 
     def apply_warping(self, feature, soft_warping_path):
@@ -105,57 +91,45 @@ class DifferentiableDTW(nn.Module):
         """
         # Use einsum to apply warping across the sequence length dimension
         warped_feature = torch.einsum('bij,bjf->bif', soft_warping_path, feature)  # [batch, seq_len, feat_dim]
-        
         return warped_feature
 
-    def normalize_and_dropout(self, warped_feature):
+    def compute_local_alignment_loss(self, feature, warped_feature):
         """
-        Apply batch normalization and dropout to the warped features.
+        Compute the local alignment loss by measuring the similarity between
+        local windows of the input feature and the warped feature.
 
         Args:
+            feature (Tensor): Original input feature of shape [batch, seq_len, feat_dim].
             warped_feature (Tensor): Warped feature of shape [batch, seq_len, feat_dim].
-        
+
         Returns:
-            normalized_feature (Tensor): Normalized and dropout-applied feature of shape [batch, seq_len, feat_dim].
+            local_loss (Tensor): Scalar tensor representing the local alignment loss.
         """
-        batch_size, seq_len, feat_dim = warped_feature.size()
+        batch_size, seq_len, feat_dim = feature.size()
+        window_size = self.window_size
 
-        # Reshape for batch normalization: [batch * seq_len, feat_dim]
-        warped_feature_flat = warped_feature.view(-1, feat_dim)
+        # Compute the number of windows
+        num_windows = seq_len - window_size + 1
 
-        # Apply batch normalization
-        normalized_feature = self.batch_norm(warped_feature_flat)
+        # Extract local windows and compute cosine similarity
+        input_windows = feature.unfold(dimension=1, size=window_size, step=1)  # [batch, num_windows, window_size, feat_dim]
+        warped_windows = warped_feature.unfold(dimension=1, size=window_size, step=1)  # [batch, num_windows, window_size, feat_dim]
 
-        # Apply dropout
-        normalized_feature = self.dropout(normalized_feature)
+        # Flatten the windows
+        input_windows_flat = input_windows.contiguous().view(batch_size, num_windows, -1)  # [batch, num_windows, window_size * feat_dim]
+        warped_windows_flat = warped_windows.contiguous().view(batch_size, num_windows, -1)  # [batch, num_windows, window_size * feat_dim]
 
-        # Reshape back to [batch, seq_len, feat_dim]
-        normalized_feature = normalized_feature.view(batch_size, seq_len, feat_dim)
+        # Normalize the vectors
+        input_norm = F.normalize(input_windows_flat, dim=2)
+        warped_norm = F.normalize(warped_windows_flat, dim=2)
 
-        return normalized_feature
+        # Compute cosine similarity for each window
+        cos_sim = (input_norm * warped_norm).sum(dim=2)  # [batch, num_windows]
 
-    def compute_alignment_regularization(self, soft_warping_path):
-        """
-        Compute the alignment regularization term to penalize deviations from the identity alignment.
+        # Compute local loss (1 - cosine similarity), averaged over windows and batch
+        local_loss = (1 - cos_sim).mean()
 
-        Args:
-            soft_warping_path (Tensor): Soft alignment path, shape [batch, seq_len, seq_len].
-        
-        Returns:
-            alignment_reg (Tensor): Scalar tensor representing the alignment regularization term.
-        """
-        batch_size, seq_len, _ = soft_warping_path.size()
-
-        # Create identity matrix of shape [seq_len, seq_len]
-        identity = torch.eye(seq_len, seq_len, device=soft_warping_path.device)
-
-        # Expand identity matrix to [batch, seq_len, seq_len]
-        identity = identity.unsqueeze(0).expand(batch_size, -1, -1)
-
-        # Compute mean squared error between soft warping path and identity
-        alignment_reg = F.mse_loss(soft_warping_path, identity)
-
-        return alignment_reg
+        return local_loss
 
 
 if __name__ == "__main__":
@@ -163,18 +137,19 @@ if __name__ == "__main__":
     seq_len = 251
     feat_dim = 64
     batch_size = 200
+    window_size = 5
 
-    # Initialize the module
-    dtw_module = DifferentiableDTW(seq_len=seq_len, feat_dim=feat_dim, dropout_rate=0.5)
+    # Initialize the DifferentiableDTW module
+    dtw_module = DifferentiableDTW(seq_len, feat_dim, window_size=window_size)
 
-    # Generate random inputs
-    score = torch.randn(batch_size, seq_len, 1)      # learned score
+    # Create random input data
+    score = torch.randn(batch_size, seq_len, 1)  # learned score
     feature = torch.randn(batch_size, seq_len, feat_dim)  # static log-mel spectrogram
 
     # Forward pass
-    warped_feature, soft_warping_path, alignment_reg = dtw_module(score, feature)
+    warped_feature, soft_warping_path, local_alignment_loss = dtw_module(score, feature)
 
-    # Print shapes to verify
-    print("Warped Feature Shape:", warped_feature.shape)           # Expected: [batch_size, seq_len, feat_dim]
-    print("Soft Warping Path Shape:", soft_warping_path.shape)     # Expected: [batch_size, seq_len, seq_len]
-    print("Alignment Regularization:", alignment_reg.item())       # Should be a scalar
+    print("Warped Feature Shape:", warped_feature.shape)
+    print("Soft Warping Path Shape:", soft_warping_path.shape)
+    print("Local Alignment Loss:", local_alignment_loss.item())
+

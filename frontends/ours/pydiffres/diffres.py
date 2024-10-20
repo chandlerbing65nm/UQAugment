@@ -14,18 +14,21 @@ RESCALE_INTERVEL_MIN = 1e-4
 RESCALE_INTERVEL_MAX = 1 - 1e-4
 
 class DifferentiableDTW(nn.Module):
-    def __init__(self, seq_len, feat_dim):
+    def __init__(self, seq_len, feat_dim, window_size=5):
         """
-        Initialize the DifferentiableDTW module with a learnable template for alignment.
+        Initialize the DifferentiableDTW module with a learnable template for alignment
+        and a local alignment regularization.
 
         Args:
             seq_len (int): The length of the input sequence.
             feat_dim (int): The dimensionality of each feature.
+            window_size (int): The size of the local window for alignment regularization.
         """
         super(DifferentiableDTW, self).__init__()
 
         # Learnable template for warping alignment (initialized randomly)
         self.learned_template = nn.Parameter(torch.randn(1, seq_len, 1))
+        self.window_size = window_size
 
     def forward(self, score, feature):
         """
@@ -37,7 +40,9 @@ class DifferentiableDTW(nn.Module):
             feature (Tensor): A tensor of shape [batch, seq_len, feat_dim] representing the features.
         
         Returns:
-            out_feature (Tensor): Warped output feature of shape [batch, seq_len, feat_dim].
+            warped_feature (Tensor): Warped output feature of shape [batch, seq_len, feat_dim].
+            soft_warping_path (Tensor): The soft alignment path.
+            local_alignment_loss (Tensor): The local alignment loss value.
         """
         batch_size, seq_len, feat_dim = feature.size()
 
@@ -50,7 +55,10 @@ class DifferentiableDTW(nn.Module):
         # Step 3: Warp the features based on the soft warping path
         warped_feature = self.apply_warping(feature, soft_warping_path)
 
-        return warped_feature, soft_warping_path
+        # Step 4: Compute local alignment loss
+        local_alignment_loss = self.compute_local_alignment_loss(feature, warped_feature)
+
+        return warped_feature, local_alignment_loss
 
     def compute_pairwise_distances(self, score):
         """
@@ -62,11 +70,8 @@ class DifferentiableDTW(nn.Module):
         Returns:
             distance_matrix (Tensor): Pairwise distances for alignment, shape [batch, seq_len, seq_len].
         """
-        batch_size, seq_len, _ = score.size()
-
         # Compute pairwise distances between score and the learned template
         distance_matrix = torch.cdist(score, self.learned_template)  # [batch, seq_len, seq_len]
-        
         return distance_matrix
 
     def compute_soft_warping_path(self, distance_matrix):
@@ -81,7 +86,7 @@ class DifferentiableDTW(nn.Module):
         """
         # Apply softmax to get soft warping path, normalized across sequence length dimension
         # Improve numerical stability by subtracting the max value along the sequence dimension
-        soft_warping_path = F.softmax(-distance_matrix - distance_matrix.max(dim=-1, keepdim=True)[0], dim=-1)  # [batch, seq_len, seq_len]
+        soft_warping_path = F.softmax(-distance_matrix - distance_matrix.max(dim=-1, keepdim=True)[0], dim=-1)
         return soft_warping_path
 
     def apply_warping(self, feature, soft_warping_path):
@@ -97,8 +102,45 @@ class DifferentiableDTW(nn.Module):
         """
         # Use einsum to apply warping across the sequence length dimension
         warped_feature = torch.einsum('bij,bjf->bif', soft_warping_path, feature)  # [batch, seq_len, feat_dim]
-        
         return warped_feature
+
+    def compute_local_alignment_loss(self, feature, warped_feature):
+        """
+        Compute the local alignment loss by measuring the similarity between
+        local windows of the input feature and the warped feature.
+
+        Args:
+            feature (Tensor): Original input feature of shape [batch, seq_len, feat_dim].
+            warped_feature (Tensor): Warped feature of shape [batch, seq_len, feat_dim].
+
+        Returns:
+            local_loss (Tensor): Scalar tensor representing the local alignment loss.
+        """
+        batch_size, seq_len, feat_dim = feature.size()
+        window_size = self.window_size
+
+        # Compute the number of windows
+        num_windows = seq_len - window_size + 1
+
+        # Extract local windows and compute cosine similarity
+        input_windows = feature.unfold(dimension=1, size=window_size, step=1)  # [batch, num_windows, window_size, feat_dim]
+        warped_windows = warped_feature.unfold(dimension=1, size=window_size, step=1)  # [batch, num_windows, window_size, feat_dim]
+
+        # Flatten the windows
+        input_windows_flat = input_windows.contiguous().view(batch_size, num_windows, -1)  # [batch, num_windows, window_size * feat_dim]
+        warped_windows_flat = warped_windows.contiguous().view(batch_size, num_windows, -1)  # [batch, num_windows, window_size * feat_dim]
+
+        # Normalize the vectors
+        input_norm = F.normalize(input_windows_flat, dim=2)
+        warped_norm = F.normalize(warped_windows_flat, dim=2)
+
+        # Compute cosine similarity for each window
+        cos_sim = (input_norm * warped_norm).sum(dim=2)  # [batch, num_windows]
+
+        # Compute local loss (1 - cosine similarity), averaged over windows and batch
+        local_loss = (1 - cos_sim).mean()
+
+        return local_loss
 
 
 class Ours(nn.Module):
@@ -121,7 +163,7 @@ class Ours(nn.Module):
         )
         
         # Stochastic gating layer to learn when to modulate frames
-        self.warp = DifferentiableDTW(seq_len=self.input_seq_length, feat_dim=self.input_f_dim)
+        self.warp = DifferentiableDTW(seq_len=self.input_seq_length, feat_dim=self.input_f_dim, window_size=10)
 
         # Sparsity regularization strength
         self.sparsity_lambda = 1.0
@@ -134,11 +176,11 @@ class Ours(nn.Module):
         score, _ = self.monotonic_score_norm(score, total_length=self.input_seq_length)
 
         # warp_frame = self.warp_frame(gated_score, x_modulated.exp(), total_length=self.output_seq_length)
-        warp_frame, warping_path = self.warp(score, x.exp())
+        warp_frame, align_loss = self.warp(score, x.exp())
         warp_frame = torch.log(warp_frame + EPS)
 
         # import ipdb; ipdb.set_trace() 
-        # print(gated_score[0:3])
+        # print(align_loss.item())
 
         guide_loss, _ = self.guide_loss(x, importance_score=score)
 
@@ -147,8 +189,9 @@ class Ours(nn.Module):
         ret["score"] = score
         ret["features"] = warp_frame
         ret["guide_loss"] = guide_loss
+        ret["align_loss"] = align_loss
 
-        ret["total_loss"] = ret["guide_loss"]
+        ret["total_loss"] = ret["guide_loss"] + ret["align_loss"]
 
         return ret
 

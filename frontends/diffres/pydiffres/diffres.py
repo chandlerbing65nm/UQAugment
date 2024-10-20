@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-import torch
+import torch.nn.functional as F
 import os
 import matplotlib.pyplot as plt
 
@@ -22,6 +22,7 @@ class DiffRes(Base):
 
         self.model = DilatedConv(
             in_channels=self.input_f_dim,
+            out_channels=1,
             dilation_rate=1,
             input_size=self.input_seq_length,
             kernel_size=5,
@@ -30,8 +31,15 @@ class DiffRes(Base):
 
     def forward(self, x):
         ret = {}
-        score = torch.sigmoid(self.model(x.permute(0, 2, 1)).permute(0, 2, 1))
+        # import ipdb; ipdb.set_trace() 
+        # print(diff.shape)
+        # print(x.shape)
+        logits = self.model(x.permute(0, 2, 1))  # Shape: [batch_size, 1, input_seq_length]
+        logits = logits.permute(0, 2, 1)  # Shape: [batch_size, input_seq_length, 1]
+
+        score = torch.sigmoid(logits) # Shape: [batch_size, input_seq_length, 1]
         score, _ = self.score_norm(score, self.output_seq_length)
+
         mean_feature, max_pool_feature, mean_pos_enc = self.frame_warping(
             x.exp(), score, total_length=self.output_seq_length
         )
@@ -42,7 +50,7 @@ class DiffRes(Base):
         ret["x"] = x
         ret["score"] = score
         ret["resolution_enc"] = mean_pos_enc
-        ret["avgpool"] = mean_feature
+        ret["features"] = mean_feature
         ret["maxpool"] = max_pool_feature
         ret["feature"] = torch.cat(
             [
@@ -52,6 +60,9 @@ class DiffRes(Base):
             ],
             dim=1,
         )
+        # ret["features"] = ret["feature"].mean(dim=1).squeeze(1)
+
+        
         ret["guide_loss"], ret["activeness"] = self.guide_loss(
             x, importance_score=score
         )

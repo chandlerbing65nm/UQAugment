@@ -22,5 +22,8 @@ def process_outputs(model, args, inputs, targets, criterion):
     elif args.frontend == 'diffres':
         diffres_loss = output_dict['diffres_loss']
         return diffres_loss + criterion(outputs, targets.argmax(dim=-1)), outputs
+    elif args.frontend == 'ours':
+        aux_loss = output_dict['aux_loss']
+        return aux_loss + criterion(outputs, targets.argmax(dim=-1)), outputs
     else:
         return criterion(outputs, targets.argmax(dim=-1)), outputs

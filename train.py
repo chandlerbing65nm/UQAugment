@@ -20,6 +20,7 @@ from datasets.dataset_selection import get_dataloaders
 from datasets.affia3k import get_dataloader as affia3k_loader
 from sklearn.metrics import average_precision_score, accuracy_score
 from sklearn.preprocessing import label_binarize
+
 from tqdm import tqdm
 from pprint import pprint
 
@@ -141,10 +142,13 @@ def main():
 
         # Compute validation metrics
         all_val_targets = np.concatenate(all_val_targets, axis=0)
+        # One-hot encode the targets
+        all_val_targets_one_hot = label_binarize(all_val_targets, classes=np.arange(args.num_classes))
+
         all_val_outputs = np.concatenate(all_val_outputs, axis=0)
 
         val_acc = accuracy_score(all_val_targets, all_val_outputs.argmax(axis=-1))
-        val_map = average_precision_score(all_val_targets, all_val_outputs, average='macro')
+        val_map = average_precision_score(all_val_targets_one_hot, all_val_outputs, average='macro')
 
         print(f'Epoch [{epoch+1}/{args.max_epoch}], '
               f'Val Accuracy: {val_acc:.4f}, '

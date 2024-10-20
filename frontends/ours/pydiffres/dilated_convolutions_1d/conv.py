@@ -472,11 +472,11 @@ class DilatedConv(Module):
     def __init__(
         self,
         in_channels: int,
-        out_channels: int,
         dilation_rate: int,
         input_size: int,
         kernel_size: int,
         stride: int,
+        out_channels = 1
     ) -> None:
         """Dilated convolution block.
 
@@ -497,108 +497,108 @@ class DilatedConv(Module):
 
         self.blks = torch.nn.ModuleList()
 
-        if in_channels == 128:
-            self.blks.append(
-                DilatedConvBLock1D(
-                    in_channels,
-                    in_channels // 2,
-                    input_size=input_size,
-                    kernel_size=kernel_size,
-                    stride=stride,
-                    dilation=1,
-                )
+        # if in_channels == 128:
+        #     self.blks.append(
+        #         DilatedConvBLock1D(
+        #             in_channels,
+        #             in_channels // 2,
+        #             input_size=input_size,
+        #             kernel_size=kernel_size,
+        #             stride=stride,
+        #             dilation=1,
+        #         )
+        #     )
+        #     self.blks.append(
+        #         DilatedConvBLock1D(
+        #             in_channels // 2,
+        #             in_channels // 4,
+        #             input_size=input_size,
+        #             kernel_size=kernel_size,
+        #             stride=stride,
+        #             dilation=dilation_rate,
+        #         )
+        #     )
+        #     self.blks.append(
+        #         DilatedConvBLock1D(
+        #             in_channels // 4,
+        #             in_channels // 8,
+        #             input_size=input_size,
+        #             kernel_size=kernel_size,
+        #             stride=stride,
+        #             dilation=dilation_rate,
+        #         )
+        #     )
+        #     self.blks.append(
+        #         DilatedConvBLock1D(
+        #             in_channels // 8,
+        #             in_channels // 16,
+        #             input_size=input_size,
+        #             kernel_size=kernel_size,
+        #             stride=stride,
+        #             dilation=dilation_rate,
+        #         )
+        #     )
+        #     self.blks.append(
+        #         DilatedConvBLock1D(
+        #             in_channels // 16,
+        #             1,
+        #             input_size=input_size,
+        #             kernel_size=kernel_size,
+        #             stride=stride,
+        #             dilation=1,
+        #         )
+        #     )
+        # elif in_channels == 40 or in_channels == 64:
+        self.blks.append(
+            DilatedConvBLock1D(
+                in_channels,
+                in_channels,
+                input_size=input_size,
+                kernel_size=kernel_size,
+                stride=stride,
+                dilation=1,
             )
-            self.blks.append(
-                DilatedConvBLock1D(
-                    in_channels // 2,
-                    in_channels // 4,
-                    input_size=input_size,
-                    kernel_size=kernel_size,
-                    stride=stride,
-                    dilation=dilation_rate,
-                )
+        )
+        self.blks.append(
+            DilatedConvBLock1D(
+                in_channels,
+                in_channels // 2,
+                input_size=input_size,
+                kernel_size=kernel_size,
+                stride=stride,
+                dilation=dilation_rate,
             )
-            self.blks.append(
-                DilatedConvBLock1D(
-                    in_channels // 4,
-                    in_channels // 8,
-                    input_size=input_size,
-                    kernel_size=kernel_size,
-                    stride=stride,
-                    dilation=dilation_rate,
-                )
+        )
+        self.blks.append(
+            DilatedConvBLock1D(
+                in_channels // 2,
+                in_channels // 4,
+                input_size=input_size,
+                kernel_size=kernel_size,
+                stride=stride,
+                dilation=dilation_rate,
             )
-            self.blks.append(
-                DilatedConvBLock1D(
-                    in_channels // 8,
-                    in_channels // 16,
-                    input_size=input_size,
-                    kernel_size=kernel_size,
-                    stride=stride,
-                    dilation=dilation_rate,
-                )
+        )
+        self.blks.append(
+            DilatedConvBLock1D(
+                in_channels // 4,
+                in_channels // 4,
+                input_size=input_size,
+                kernel_size=kernel_size,
+                stride=stride,
+                dilation=dilation_rate,
             )
-            self.blks.append(
-                DilatedConvBLock1D(
-                    in_channels // 16,
-                    1,
-                    input_size=input_size,
-                    kernel_size=kernel_size,
-                    stride=stride,
-                    dilation=1,
-                )
+        )
+        self.blks.append(
+            DilatedConvBLock1D(
+                in_channels // 4,
+                out_channels,
+                input_size=input_size,
+                kernel_size=kernel_size,
+                stride=stride,
+                dilation=1,
             )
-        elif in_channels == 40 or in_channels == 64:
-            self.blks.append(
-                DilatedConvBLock1D(
-                    in_channels,
-                    in_channels,
-                    input_size=input_size,
-                    kernel_size=kernel_size,
-                    stride=stride,
-                    dilation=1,
-                )
-            )
-            self.blks.append(
-                DilatedConvBLock1D(
-                    in_channels,
-                    in_channels // 2,
-                    input_size=input_size,
-                    kernel_size=kernel_size,
-                    stride=stride,
-                    dilation=dilation_rate,
-                )
-            )
-            self.blks.append(
-                DilatedConvBLock1D(
-                    in_channels // 2,
-                    in_channels // 4,
-                    input_size=input_size,
-                    kernel_size=kernel_size,
-                    stride=stride,
-                    dilation=dilation_rate,
-                )
-            )
-            self.blks.append(
-                DilatedConvBLock1D(
-                    in_channels // 4,
-                    in_channels // 4,
-                    input_size=input_size,
-                    kernel_size=kernel_size,
-                    stride=stride,
-                    dilation=dilation_rate,
-                )
-            )
-            self.blks.append(
-                DilatedConvBLock1D(
-                    in_channels // 4,
-                    out_channels,
-                    input_size=input_size,
-                    kernel_size=kernel_size,
-                    stride=stride,
-                    dilation=1,
-                )
-            )
+        )
 
     def forward(self, x: Tensor) -> Tensor:
         """Forward pass of the dilated\

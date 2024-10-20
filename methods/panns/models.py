@@ -423,6 +423,10 @@ class Cnn6(nn.Module):
         self.spec_augmenter = SpecAugmentation(time_drop_width=64, time_stripes_num=2, 
             freq_drop_width=8, freq_stripes_num=2)
 
+        # # Spec augmenter
+        # self.spec_augmenter = SpecAugmentation(time_drop_width=64, time_stripes_num=2, 
+        #     freq_drop_width=0, freq_stripes_num=0)
+
         self.bn0 = nn.BatchNorm2d(64)
 
         self.conv_block1 = ConvBlock5x5(in_channels=1, out_channels=64)

@@ -27,6 +27,7 @@ from frontends.dmel.frontend import DMel
 from frontends.dstft.frontend import DSTFT
 from frontends.sincnet.frontend import SincNet
 from frontends.diffres.frontend import DiffRes
+from frontends.ours.frontend import DiffRes as Ours
 
 class PANNS_CNN6(nn.Module):
     def __init__(self, sample_rate, window_size, hop_size, mel_bins, fmin, 
@@ -97,6 +98,12 @@ class PANNS_CNN6(nn.Module):
             in_f_dim=mel_bins,
             dimension_reduction_rate=0.60,
             learn_pos_emb=False
+        )
+
+        self.ours_extractor = Ours(
+            in_t_dim=251,
+            in_f_dim=mel_bins,
+            dimension_reduction_rate=0.6,
         )
 
         self.dmel_extractor = DMel(
@@ -298,7 +305,26 @@ class PANNS_CNN6(nn.Module):
 
             # Access the outputs
             guide_loss = ret["guide_loss"]
-            x = ret["avgpool"].unsqueeze(1)
+            x = ret["features"].unsqueeze(1)
+
+        elif self.frontend == 'ours':
+            x = self.spectrogram_extractor(input)  # (batch, time_steps, freq_bins)
+            x = self.logmel_extractor(x)  # (batch, time_steps, mel_bins)
+
+            # Pass the precomputed features (MFCC or LogMel) into the base model conv blocks
+            x = x.transpose(1, 3)  # Align dimensions for the base model
+            x = self.base.bn0(x)   # Apply the batch normalization from base
+            x = x.transpose(1, 3)
+
+            if self.training:
+                x = self.base.spec_augmenter(x)
+
+            x = x.squeeze(1)
+            ret = self.ours_extractor(x)
+
+            # Access the outputs
+            aux_loss = ret["total_loss"]
+            x = ret["features"].unsqueeze(1)
 
         elif self.frontend == 'dmel':
             x = self.dmel_extractor(input) 
@@ -381,6 +407,8 @@ class PANNS_CNN6(nn.Module):
             output_dict = {'rn_indices':rn_indices, 'mixup_lambda': lam, 'clipwise_output': clipwise_output, 'embedding': embedding}
         elif self.training and self.frontend == 'diffres':
             output_dict = {'clipwise_output': clipwise_output, 'embedding': embedding, 'diffres_loss': guide_loss}
+        elif self.training and self.frontend == 'ours':
+            output_dict = {'clipwise_output': clipwise_output, 'embedding': embedding, 'aux_loss': aux_loss}
         else:
             output_dict = {'clipwise_output': clipwise_output, 'embedding': embedding}
         return output_dict

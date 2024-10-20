@@ -27,7 +27,7 @@ from frontends.dmel.frontend import DMel
 from frontends.dstft.frontend import DSTFT
 from frontends.sincnet.frontend import SincNet
 from frontends.diffres.frontend import DiffRes
-from frontends.ours.frontend import DiffRes as Ours
+from frontends.nafa.frontend import NAFA
 
 class PANNS_CNN6(nn.Module):
     def __init__(self, sample_rate, window_size, hop_size, mel_bins, fmin, 
@@ -100,10 +100,9 @@ class PANNS_CNN6(nn.Module):
             learn_pos_emb=False
         )
 
-        self.ours_extractor = Ours(
+        self.nafa_extractor = NAFA(
             in_t_dim=251,
             in_f_dim=mel_bins,
-            dimension_reduction_rate=0.6,
         )
 
         self.dmel_extractor = DMel(
@@ -307,7 +306,7 @@ class PANNS_CNN6(nn.Module):
             guide_loss = ret["guide_loss"]
             x = ret["features"].unsqueeze(1)
 
-        elif self.frontend == 'ours':
+        elif self.frontend == 'nafa':
             x = self.spectrogram_extractor(input)  # (batch, time_steps, freq_bins)
             x = self.logmel_extractor(x)  # (batch, time_steps, mel_bins)
 
@@ -320,7 +319,7 @@ class PANNS_CNN6(nn.Module):
                 x = self.base.spec_augmenter(x)
 
             x = x.squeeze(1)
-            ret = self.ours_extractor(x)
+            ret = self.nafa_extractor(x)
 
             # Access the outputs
             aux_loss = ret["total_loss"]

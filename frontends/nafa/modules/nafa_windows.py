@@ -4,19 +4,19 @@ import torch.nn.functional as F
 import os
 import matplotlib.pyplot as plt
 
-from frontends.ours.pydiffres.core import Base
-from frontends.ours.pydiffres.dilated_convolutions_1d.conv import DilatedConv, DilatedConv_Out_128
+from frontends.nafa.modules.core import Base
+from frontends.nafa.modules.dilated_convolutions_1d.conv import DilatedConv, DilatedConv_Out_128
 
-from frontends.ours.pydiffres.pooling import Pooling_layer
+from frontends.nafa.modules.pooling import Pooling_layer
 
 EPS = 1e-12
 RESCALE_INTERVEL_MIN = 1e-4
 RESCALE_INTERVEL_MAX = 1 - 1e-4
 
-class DifferentiableDTW(nn.Module):
+class FrameAlignment(nn.Module):
     def __init__(self, seq_len, feat_dim, window_size=5):
         """
-        Initialize the DifferentiableDTW module with a learnable template for alignment
+        Initialize the FrameAlignment module with a learnable template for alignment
         and a local alignment regularization.
 
         Args:
@@ -24,7 +24,7 @@ class DifferentiableDTW(nn.Module):
             feat_dim (int): The dimensionality of each feature.
             window_size (int): The size of the local window for alignment regularization.
         """
-        super(DifferentiableDTW, self).__init__()
+        super(FrameAlignment, self).__init__()
 
         # Learnable template for warping alignment (initialized randomly)
         self.learned_template = nn.Parameter(torch.randn(1, seq_len, 1))
@@ -143,8 +143,8 @@ class DifferentiableDTW(nn.Module):
         return local_loss
 
 
-class Ours(nn.Module):
-    def __init__(self, in_t_dim, in_f_dim, dimension_reduction_rate, learn_pos_emb=False):
+class NAFA(nn.Module):
+    def __init__(self, in_t_dim, in_f_dim):
         super().__init__()
         self.feature_channels = 3
         self.input_seq_length = in_t_dim
@@ -163,7 +163,7 @@ class Ours(nn.Module):
         )
         
         # Stochastic gating layer to learn when to modulate frames
-        self.warp = DifferentiableDTW(seq_len=self.input_seq_length, feat_dim=self.input_f_dim, window_size=10)
+        self.warp = FrameAlignment(seq_len=self.input_seq_length, feat_dim=self.input_f_dim)
 
         # Sparsity regularization strength
         self.sparsity_lambda = 1.0

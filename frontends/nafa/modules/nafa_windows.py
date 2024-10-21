@@ -4,10 +4,7 @@ import torch.nn.functional as F
 import os
 import matplotlib.pyplot as plt
 
-from frontends.nafa.modules.core import Base
 from frontends.nafa.modules.dilated_convolutions_1d.conv import DilatedConv, DilatedConv_Out_128
-
-from frontends.nafa.modules.pooling import Pooling_layer
 
 EPS = 1e-12
 RESCALE_INTERVEL_MIN = 1e-4
@@ -146,12 +143,8 @@ class FrameAlignment(nn.Module):
 class NAFA(nn.Module):
     def __init__(self, in_t_dim, in_f_dim):
         super().__init__()
-        self.feature_channels = 3
         self.input_seq_length = in_t_dim
         self.input_f_dim = in_f_dim
-
-        self.dimension_reduction_rate = 0.6
-        self.output_seq_length = int(self.input_seq_length * (1-self.dimension_reduction_rate))
 
         # Dilated Convolution to learn importance scores
         self.model = DilatedConv(
@@ -179,7 +172,7 @@ class NAFA(nn.Module):
         # import ipdb; ipdb.set_trace() 
         # print(align_loss.item())
 
-        guide_loss, _ = self.guide_loss(x, importance_score=score)
+        guide_loss = self.guide_loss(x, importance_score=score)
 
         # Final outputs
         ret["x"] = x
@@ -246,24 +239,15 @@ class NAFA(nn.Module):
         score_mask = score_mask < (torch.min(score_mask) + 1e-6)
 
         guide_loss_final = self.zero_loss_like(mel)
-        activeness_final = self.zero_loss_like(mel)
 
         for id in range(importance_score.size(0)):
             guide_loss = torch.mean(importance_score[id][score_mask[id]])
             if torch.isnan(guide_loss).item():
                 continue
             
-            if guide_loss > (1-self.dimension_reduction_rate) * 0.5:
+            if guide_loss > 0.5:
                 guide_loss_final = (
                     guide_loss_final + guide_loss / importance_score.size(0)
                 )
 
-            activeness = torch.std(importance_score[id][~score_mask[id]])
-            if torch.isnan(activeness).item():
-                continue
-            
-            activeness_final = (
-                activeness_final + activeness / importance_score.size(0)
-            )
-
-        return guide_loss_final, activeness_final
+        return guide_loss_final

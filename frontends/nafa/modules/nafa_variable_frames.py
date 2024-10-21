@@ -22,25 +22,24 @@ class FrameAlignment(nn.Module):
         super(FrameAlignment, self).__init__()
 
         # Learnable template for aligning alignment (initialized randomly)
-        self.learned_template = nn.Parameter(torch.randn(1, seq_len, 1))
+        # Changed seq_len to seq_len // 2
+        self.learned_template = nn.Parameter(torch.randn(1, int(seq_len * 0.4), 1))
 
     def forward(self, score, feature):
         """
-        Forward function that computes a aligned feature representation
+        Forward function that computes an aligned feature representation
         using a differentiable FrameAlignment mechanism conditioned on the score tensor.
 
         Args:
             score (Tensor): A tensor of shape [batch, seq_len, 1] representing the conditioning score.
             feature (Tensor): A tensor of shape [batch, seq_len, feat_dim] representing the features.
-        
+
         Returns:
-            out_feature (Tensor): aligned output feature of shape [batch, seq_len, feat_dim].
+            out_feature (Tensor): aligned output feature of shape [batch, seq_len // 2, feat_dim].
         """
         batch_size, seq_len, feat_dim = feature.size()
 
-        # score = torch.randn_like(score)
-
-        # Step 1: Create a pairwise distance matrix between the score and the learnable template
+        # Step 1: Create a pairwise distance matrix between the learned template and the score
         distance_matrix = self.compute_pairwise_distances(score)
 
         # Step 2: Apply softmax to get a differentiable alignment path (soft aligning path)
@@ -53,19 +52,23 @@ class FrameAlignment(nn.Module):
 
     def compute_pairwise_distances(self, score):
         """
-        Compute pairwise distances between score matrix and the learned template for alignment.
-        
+        Compute pairwise distances between the learned template and the score matrix for alignment.
+
         Args:
             score (Tensor): A tensor of shape [batch, seq_len, 1].
-        
+
         Returns:
-            distance_matrix (Tensor): Pairwise distances for alignment, shape [batch, seq_len, seq_len].
+            distance_matrix (Tensor): Pairwise distances for alignment, shape [batch, seq_len // 2, seq_len].
         """
         batch_size, seq_len, _ = score.size()
 
-        # Compute pairwise distances between score and the learned template
-        distance_matrix = torch.cdist(score, self.learned_template)  # [batch, seq_len, seq_len]
-        
+        # Expand the learned_template to match batch size
+        learned_template_expanded = self.learned_template.expand(batch_size, -1, -1)  # [batch, seq_len // 2, 1]
+
+        # Compute pairwise distances between learned_template and score
+        # The result will be [batch, seq_len // 2, seq_len]
+        distance_matrix = torch.cdist(learned_template_expanded, score)  # [batch, seq_len // 2, seq_len]
+
         return distance_matrix
 
     def compute_soft_aligning_path(self, distance_matrix):
@@ -73,14 +76,17 @@ class FrameAlignment(nn.Module):
         Compute a soft alignment matrix (soft aligning path) using softmax over the distances.
 
         Args:
-            distance_matrix (Tensor): A tensor of shape [batch, seq_len, seq_len].
-        
+            distance_matrix (Tensor): A tensor of shape [batch, seq_len // 2, seq_len].
+
         Returns:
-            soft_aligning_path (Tensor): A soft alignment path, shape [batch, seq_len, seq_len].
+            soft_aligning_path (Tensor): A soft alignment path, shape [batch, seq_len // 2, seq_len].
         """
         # Apply softmax to get soft aligning path, normalized across sequence length dimension
         # Improve numerical stability by subtracting the max value along the sequence dimension
-        soft_aligning_path = F.softmax(-distance_matrix - distance_matrix.max(dim=-1, keepdim=True)[0], dim=-1)  # [batch, seq_len, seq_len]
+        soft_aligning_path = F.softmax(
+            -distance_matrix - distance_matrix.max(dim=-1, keepdim=True)[0],
+            dim=-1
+        )  # [batch, seq_len // 2, seq_len]
         return soft_aligning_path
 
     def apply_aligning(self, feature, soft_aligning_path):
@@ -89,14 +95,15 @@ class FrameAlignment(nn.Module):
 
         Args:
             feature (Tensor): A tensor of shape [batch, seq_len, feat_dim].
-            soft_aligning_path (Tensor): A tensor of shape [batch, seq_len, seq_len].
-        
+            soft_aligning_path (Tensor): A tensor of shape [batch, seq_len // 2, seq_len].
+
         Returns:
-            aligned_feature (Tensor): aligned feature of shape [batch, seq_len, feat_dim].
+            aligned_feature (Tensor): aligned feature of shape [batch, seq_len // 2, feat_dim].
         """
         # Use einsum to apply aligning across the sequence length dimension
-        aligned_feature = torch.einsum('bij,bjf->bif', soft_aligning_path, feature)  # [batch, seq_len, feat_dim]
-        
+        # Adjusted indices to match the dimensions
+        aligned_feature = torch.einsum('bij,bjf->bif', soft_aligning_path, feature)  # [batch, seq_len // 2, feat_dim]
+
         return aligned_feature
 
 

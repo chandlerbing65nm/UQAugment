@@ -10,30 +10,16 @@
 #SBATCH --partition=small-g            
 #SBATCH --time=24:00:00           
 #SBATCH --account=project_465001389
-#SBATCH --output=/users/doloriel/work/slurm/affia3k/ast-nafa(10windows3)-lumi.out
+#SBATCH --output=/users/doloriel/work/slurm/affia3k/cnn6-nafa(gumbel_softmax3)-lumi.out
 
 # Load necessary modules (if required)
 conda init
 conda activate uwac
 cd /users/doloriel/work/Repo/UWAC
 
-# First run
+
 python train.py \
-    --model_name "ast" \
+    --model_name "panns_cnn6" \
     --frontend "nafa" \
     --batch_size 200 \
     --wandb_mode "offline"
-
-# # Second run (manually handle output redirection)
-# python train.py \
-#     --model_name "panns_cnn6" \
-#     --frontend "ours" \
-#     --batch_size 200 \
-#     --wandb_mode "offline"
-
-# # Third run (manually handle output redirection)
-# python train.py \
-#     --model_name "panns_cnn6" \
-#     --frontend "ours" \
-#     --batch_size 200 \
-#     --wandb_mode "offline"

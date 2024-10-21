@@ -123,9 +123,6 @@ class NAFA(nn.Module):
         # Stochastic gating layer to learn when to modulate frames
         self.align = FrameAlignment(seq_len=self.input_seq_length, feat_dim=self.input_f_dim)
 
-        # Sparsity regularization strength
-        self.sparsity_lambda = 1.0
-
     def forward(self, x):
         ret = {}
 
@@ -190,16 +187,6 @@ class NAFA(nn.Module):
                     score[i][axis[i]] += intervel * alpha
         ####################################################################
         return score, total_length
-
-    def score_norm(self, score):
-        """
-        Custom normalization function for the importance scores.
-        This ensures that the sum of scores for each frame equals 1.
-        """
-        score_sum = torch.sum(score, dim=1, keepdim=True)  # Sum along the sequence dimension
-        # Avoid division by zero, adding a small epsilon value
-        score_normalized = score / (score_sum + EPS)
-        return score_normalized
 
     def zero_loss_like(self, x):
         return torch.tensor([0.0]).to(x.device)

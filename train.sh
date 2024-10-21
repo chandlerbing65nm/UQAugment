@@ -10,7 +10,7 @@
 #SBATCH --partition=small-g            
 #SBATCH --time=24:00:00           
 #SBATCH --account=project_465001389
-#SBATCH --output=/users/doloriel/work/slurm/affia3k/cnn6-nafa(10windows3)-lumi.out
+#SBATCH --output=/users/doloriel/work/slurm/affia3k/ast-nafa(10windows3)-lumi.out
 
 # Load necessary modules (if required)
 conda init
@@ -19,7 +19,7 @@ cd /users/doloriel/work/Repo/UWAC
 
 # First run
 python train.py \
-    --model_name "panns_cnn6" \
+    --model_name "ast" \
     --frontend "nafa" \
     --batch_size 200 \
     --wandb_mode "offline"

@@ -4,22 +4,21 @@ import torch.nn.functional as F
 import os
 import matplotlib.pyplot as plt
 
-from frontends.nafa.modules.dilated_convolutions_1d.conv import DilatedConv, DilatedConv_Out_128
-
 EPS = 1e-12
 RESCALE_INTERVEL_MIN = 1e-4
 RESCALE_INTERVEL_MAX = 1 - 1e-4
 
 class FrameAugment(nn.Module):
-    def __init__(self, seq_len, feat_dim, temperature=0.2, frame_reduction_ratio=None, device='cuda'):
+    def __init__(self, seq_len, feat_dim, temperature=0.2, frame_reduction_ratio=None, activation_type="gumbel_softmax", device='cuda'):
         """
-        Initialize the FrameAugment module with a learnable template for augmentation.
+        Initialize the FrameAugment module with an option for different augmenting paths.
 
         Args:
             seq_len (int): The length of the input sequence.
             feat_dim (int): The dimensionality of each feature.
             temperature (float): The temperature for the Gumbel-Softmax. Lower values make it sharper.
             frame_reduction_ratio (float): Ratio to reduce the sequence length (0 < ratio <= 1).
+            activation_type (str): Type of activation to use. Options: "gumbel_softmax", "sigmoid", "bernoulli", "softmax", "temp_softmax".
         """
         super(FrameAugment, self).__init__()
 
@@ -33,11 +32,11 @@ class FrameAugment(nn.Module):
         else:
             self.reduced_len = self.seq_len
 
-        # Learnable templates for augmentation (initialized randomly)
-        self.flexible_noise = torch.randn(1, self.reduced_len, 1).to(device=device)
-        self.fixed_noise = torch.randn(1, seq_len, 1).to(device=device)
+        # noise templates for augmentation (initialized randomly)
+        self.noise_template = torch.randn(1, self.reduced_len, seq_len).to(device=device)
 
         self.temperature = temperature
+        self.activation_type = activation_type
 
 
     def forward(self, feature):
@@ -53,57 +52,49 @@ class FrameAugment(nn.Module):
         """
         batch_size, seq_len, feat_dim = feature.size()
 
-        # import ipdb; ipdb.set_trace() 
-        # print(score.shape)
+        # Step 1: Create a mixing matrix matrix from the noise template
+        mixing_matrix = self.noise_template.expand(batch_size, -1, -1)
 
-        # Step 1: Create a pairwise distance matrix between the learned template and the score
-        distance_matrix = self.compute_pairwise_distances(self.fixed_noise.expand(batch_size, -1, -1))
+        # Step 2: Apply selected activation to get a differentiable augmenting path
+        augmenting_path = self.compute_augmenting_path(mixing_matrix)
 
-        # Step 2: Apply Gumbel-Softmax to get a differentiable augmentment path (soft augmenting path)
-        soft_augmenting_path = self.compute_gumbel_soft_augmenting_path(distance_matrix)
-
-        # Step 3: augment the features based on the soft augmenting path
-        augmented_feature = self.apply_augmenting(feature, soft_augmenting_path)
+        # Step 3: augment the features based on the augmenting path
+        augmented_feature = self.apply_augmenting(feature, augmenting_path)
 
         return augmented_feature
 
-    def compute_pairwise_distances(self, score):
+    def compute_augmenting_path(self, mixing_matrix):
         """
-        Compute pairwise distances between the learned template and the score matrix for augmentment.
+        Compute an augmenting matrix (augmenting path) using the selected activation function.
 
         Args:
-            score (Tensor): A tensor of shape [batch, seq_len, 1].
+            mixing_matrix (Tensor): A tensor of shape [batch, seq_len, seq_len].
 
         Returns:
-            distance_matrix (Tensor): Pairwise distances for augmentment
+            augmenting_path (Tensor): An augmenting path matrix.
         """
-        batch_size, seq_len, _ = score.size()
-
-        # Expand the flexible_noise to match batch size
-        flexible_noise_expanded = self.flexible_noise.expand(batch_size, -1, -1)
-
-        # Compute pairwise distances between flexible_noise and score
-        distance_matrix = torch.cdist(flexible_noise_expanded, score)
-
-        return distance_matrix
-
-    def compute_gumbel_soft_augmenting_path(self, distance_matrix):
-        """
-        Compute a soft augmentment matrix (soft augmenting path) using Gumbel-Softmax over the distances.
-
-        Args:
-            distance_matrix (Tensor): A tensor of shape [batch, seq_len, seq_len].
-
-        Returns:
-            soft_augmenting_path (Tensor): A soft augmentment path
-        """
-        # Convert distances to logits (negative distance)
-        gumbel_logits = -distance_matrix
-
-        # Apply Gumbel-Softmax sampling
-        gumbel_soft_augmenting_path = self.gumbel_softmax_sample(gumbel_logits, temperature=self.temperature)
-
-        return gumbel_soft_augmenting_path
+        if self.activation_type == "gumbel_softmax":
+            # Gumbel-Softmax path
+            logits = -mixing_matrix
+            return self.gumbel_softmax_sample(logits, temperature=self.temperature)
+        elif self.activation_type == "sigmoid":
+            # Sigmoid activation
+            logits = -mixing_matrix
+            return torch.sigmoid(logits)
+        elif self.activation_type == "bernoulli":
+            # Bernoulli sampling (requires logits between 0 and 1)
+            logits = mixing_matrix
+            return torch.bernoulli(logits)
+        elif self.activation_type == "softmax":
+            # Standard softmax
+            logits = -mixing_matrix
+            return F.softmax(logits, dim=-1)
+        elif self.activation_type == "temp_softmax":
+            # Softmax with temperature scaling
+            logits = -mixing_matrix
+            return F.softmax(logits / self.temperature, dim=-1)
+        else:
+            raise ValueError(f"Unsupported activation type: {self.activation_type}")
 
     def gumbel_softmax_sample(self, logits, temperature=1.0):
         """
@@ -122,20 +113,20 @@ class FrameAugment(nn.Module):
         # Add Gumbel noise and apply softmax with temperature scaling
         return F.softmax((logits + gumbel_noise) / temperature, dim=-1)
 
-    def apply_augmenting(self, feature, soft_augmenting_path):
+    def apply_augmenting(self, feature, augmenting_path):
         """
-        Apply the augmenting to the feature using the soft augmenting path.
+        Apply the augmenting to the feature using the augmenting path.
 
         Args:
             feature (Tensor): A tensor of shape [batch, seq_len, feat_dim].
-            soft_augmenting_path (Tensor): A tensor of shape [batch, seq_len, seq_len].
+            augmenting_path (Tensor): A tensor of shape [batch, seq_len, seq_len].
 
         Returns:
             augmented_feature (Tensor): augmented feature of shape [batch, seq_len, feat_dim].
         """
         # Use einsum to apply augmenting across the sequence length dimension
         # Adjusted indices to match the dimensions
-        augmented_feature = torch.einsum('bij,bjf->bif', soft_augmenting_path, feature)  # [batch, reduced_len, feat_dim]
+        augmented_feature = torch.einsum('bij,bjf->bif', augmenting_path, feature)  # [batch, reduced_len, feat_dim]
 
         return augmented_feature
 
@@ -150,9 +141,10 @@ class NAFA(nn.Module):
             seq_len=self.input_seq_length, 
             feat_dim=self.input_f_dim,
             temperature=0.2, 
-            frame_reduction_ratio=None,
+            frame_reduction_ratio=0.6,
+            activation_type='sigmoid',  # Set the activation type
             device='cuda'
-            )
+        )
 
     def forward(self, x):
         ret = {}
@@ -160,14 +152,10 @@ class NAFA(nn.Module):
         augment_frame = self.frame_augment(x.exp())
         augment_frame = torch.log(augment_frame + EPS)
 
-        # import ipdb; ipdb.set_trace() 
-        # print(gated_score[0:3])
-
         # Final outputs
         ret["x"] = x
         ret["features"] = augment_frame
         ret["dummy"] = torch.tensor(0.0, device=x.device)
-
         ret["total_loss"] = ret["dummy"]
 
         return ret

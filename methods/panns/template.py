@@ -296,8 +296,8 @@ class PANNS_CNN6(nn.Module):
             x = self.base.bn0(x)   # Apply the batch normalization from base
             x = x.transpose(1, 3)
 
-            if self.training:
-                x = self.base.spec_augmenter(x)
+            # if self.training:
+            #     x = self.base.spec_augmenter(x)
 
             x = x.squeeze(1)
             ret = self.diffres_extractor(x)
@@ -315,8 +315,8 @@ class PANNS_CNN6(nn.Module):
             x = self.base.bn0(x)   # Apply the batch normalization from base
             x = x.transpose(1, 3)
 
-            if self.training:
-                x = self.base.spec_augmenter(x)
+            # if self.training:
+            #     x = self.base.spec_augmenter(x)
 
             x = x.squeeze(1)
             ret = self.nafa_extractor(x)

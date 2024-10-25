@@ -109,6 +109,17 @@ class FrameAugment(nn.Module):
             beta = 1.5  # shape parameter for Weibull
             weibull_noise = torch.pow(-torch.log(1 - torch.rand_like(mixing_matrix) + EPS), 1 / beta)
             return F.softmax(weibull_noise / self.temperature, dim=-1)
+        elif self.evd_type == "gaussian":
+            # Gaussian distribution
+            mu, sigma = 0, 1  # mean and standard deviation for Gaussian
+            gaussian_noise = torch.normal(mu, sigma, size=mixing_matrix.size(), device=mixing_matrix.device)
+            return F.softmax(gaussian_noise / self.temperature, dim=-1)
+        elif self.evd_type == "binomial":
+            # Binomial distribution
+            n, p = 10, 0.5  # number of trials and probability of success
+            binomial_noise = torch.distributions.Binomial(total_count=n, probs=p).sample(mixing_matrix.size())
+            binomial_noise = binomial_noise.to(mixing_matrix.device)
+            return F.softmax(binomial_noise / self.temperature, dim=-1)
         else:
             raise ValueError(f"Unsupported activation type: {self.evd_type}")
 
@@ -167,7 +178,7 @@ class NAFA(nn.Module):
             temperature=0.2, 
             frame_reduction_ratio=0.6,
             frame_augmentation_ratio=1.0,  # Use ratio instead of fixed number
-            evd_type='weibull', 
+            evd_type='gaussian', 
             device='cuda'
         )
 

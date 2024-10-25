@@ -1,90 +1,40 @@
-import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
-class DropStripes(nn.Module):
-    def __init__(self, dim, drop_width):
-        """Drop stripes with Gumbel noise.
+class ATIBN(nn.Module):
+    def __init__(self, feat_dim, seq_len):
+        super(ATIBN, self).__init__()
+        self.feat_dim = feat_dim
+        self.seq_len = seq_len
 
-        Args:
-          dim: int, dimension along which to drop (2 for time, 3 for frequency)
-          drop_width: int, maximum width of stripes to drop
-        """
-        super(DropStripes, self).__init__()
+    def forward(self, x):
+        # Calculate Mutual Information for temporal dimension (using pairwise cosine similarity as proxy)
+        cosine_similarity = torch.cosine_similarity(x[:, :-1, :], x[:, 1:, :], dim=-1)
+        mutual_information = 1 - cosine_similarity  # Proxy for MI; high when frames are similar
 
-        assert dim in [1, 2]  # dim 2: time; dim 3: frequency
+        # Identify high mutual information frames for noise application
+        high_mi_mask = mutual_information > mutual_information.mean(dim=1, keepdim=True)
+        high_mi_mask = torch.cat([high_mi_mask, torch.zeros_like(high_mi_mask[:, :1])], dim=1)  # Pad to match x
 
-        self.dim = dim
-        self.drop_width = drop_width
+        # Generate Gaussian noise with shape [batch, seq_len, seq_len]
+        noise = torch.randn(x.size(0), self.seq_len, self.seq_len).to(x.device)
+        noise = noise * high_mi_mask.unsqueeze(-1)  # Apply noise only on high-MI frames
 
-    def forward(self, input):
-        """input: (batch_size, channels, time_steps, freq_bins)"""
+        # Apply the noise through matrix multiplication
+        x_noisy = torch.bmm(noise, x)  # Shape: [batch, seq_len, feat_dim]
+        return x_noisy
 
-        assert input.ndimension() == 3
-
-        batch_size = input.shape[0]
-        total_width = input.shape[self.dim]
-
-        # Compute random distance and start index (bgn)
-        device = input.device  # Input device
-        distance = self.drop_width
-        bgn = torch.randint(low=0, high=total_width - distance, size=(1,), device=device)[0]
-
-        # Create noise matrix: [batch_size, distance, distance]
-        stripe_shape = (batch_size, distance, distance)
-        gumbel_noise = self.sample_gumbel(stripe_shape, device)
-        gumbel_softmax = F.softmax(gumbel_noise, dim=-1)  # Apply softmax along the last dim
-
-        if self.dim == 1:
-            # Batch matrix multiplication for time dimension
-            input[:, bgn : bgn + distance, :] = torch.einsum(
-                'bij,bjk->bik', gumbel_softmax, input[:, bgn : bgn + distance, :]
-            )
-        elif self.dim == 2:
-            # Batch matrix multiplication for frequency dimension
-            input[:, :, bgn : bgn + distance] = torch.einsum(
-                'bij,bkj->bik', gumbel_softmax, input[:, :, bgn : bgn + distance]
-            ).permute(0,2,1)
-
-        return input
-
-    def sample_gumbel(self, shape, device, eps=1e-10):
-        """Sample Gumbel noise."""
-        U = torch.rand(shape, device=device)  # Ensure it's on the correct device
-        return -torch.log(-torch.log(U + eps) + eps)
-
-class SpecAugmentation(nn.Module):
-    def __init__(self, time_drop_width, freq_drop_width):
-        """Spec augmentation with Gumbel noise.
-
-        Args:
-          time_drop_width: int
-          time_stripes_num: int
-          freq_drop_width: int
-          freq_stripes_num: int
-        """
-        super(SpecAugmentation, self).__init__()
-
-        self.time_dropper = DropStripes(dim=1, drop_width=time_drop_width)
-
-        self.freq_dropper = DropStripes(dim=2, drop_width=freq_drop_width)
-
-    def forward(self, input):
-        x = self.time_dropper(input)
-        x = self.freq_dropper(x)
-        return x
-
-
-if __name__ == '__main__':
-    torch.manual_seed(0)
-    random_state = np.random.RandomState(0)
-    np_data = random_state.normal(size=(200, 251, 64))
-    pt_data = torch.Tensor(np_data)
-
-    spec_augmenter = SpecAugmentation(time_drop_width=230, 
-                                      freq_drop_width=0)
-
-    result = spec_augmenter(pt_data)
-
-    print(result.shape)
+# Testing the ATIBN Layer
+if __name__ == "__main__":
+    # Define input sizes
+    seq_len = 251
+    feat_dim = 64
+    batch_size = 200
+    
+    # Initialize synthetic data and ATIBN layer
+    data = torch.randn(batch_size, seq_len, feat_dim)
+    atibn_layer = ATIBN(feat_dim, seq_len)
+    
+    # Apply ATIBN to input data
+    augmented_data = atibn_layer(data)
+    print("Shape of augmented data:", augmented_data.shape)  # Expected output: [batch_size, seq_len, feat_dim]

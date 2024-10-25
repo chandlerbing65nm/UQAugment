@@ -11,7 +11,16 @@ RESCALE_INTERVEL_MIN = 1e-4
 RESCALE_INTERVEL_MAX = 1 - 1e-4
 
 class FrameAugment(nn.Module):
-    def __init__(self, seq_len, feat_dim, temperature=0.2, frame_reduction_ratio=None, evd_type="gumbel", device='cuda'):
+    def __init__(
+        self, 
+        seq_len, 
+        feat_dim, 
+        temperature=0.2, 
+        frame_reduction_ratio=None, 
+        frame_augmentation_ratio=1.0,  # Ratio of frames to augment
+        evd_type="gumbel", 
+        device='cuda'
+        ):
         """
         Initialize the FrameAugment module with an option for different augmenting paths.
 
@@ -20,6 +29,7 @@ class FrameAugment(nn.Module):
             feat_dim (int): The dimensionality of each feature.
             temperature (float): The temperature for the Gumbel-Softmax. Lower values make it sharper.
             frame_reduction_ratio (float): Ratio to reduce the sequence length (0 < ratio <= 1).
+            frame_augmentation_ratio (float): Ratio of reduced_len frames to augment (0 <= ratio <= 1).
             evd_type (str): Type of extreme value distribution to use.
         """
         super(FrameAugment, self).__init__()
@@ -34,12 +44,15 @@ class FrameAugment(nn.Module):
         else:
             self.reduced_len = self.seq_len
 
-        # noise templates for augmentation (initialized randomly)
+        # Ratio of frames to apply augmentation (converted to count)
+        assert 0 <= frame_augmentation_ratio <= 1, "frame_augmentation_ratio must be between 0 and 1"
+        self.num_augmented_frames = max(1, int(self.reduced_len * frame_augmentation_ratio))
+
+        # Noise templates for augmentation (initialized randomly)
         self.noise_template = torch.randn(1, self.reduced_len, seq_len).to(device=device)
 
         self.temperature = temperature
         self.evd_type = evd_type
-
 
     def forward(self, feature):
         """
@@ -54,13 +67,17 @@ class FrameAugment(nn.Module):
         """
         batch_size, seq_len, feat_dim = feature.size()
 
-        # Step 1: Create a mixing matrix matrix from the noise template
+        # Step 1: Create a mixing matrix from the noise template
         mixing_matrix = self.noise_template.expand(batch_size, -1, -1)
 
         # Step 2: Apply selected activation to get a differentiable augmenting path
         augmenting_path = self.compute_augmenting_path(mixing_matrix)
 
-        # Step 3: augment the features based on the augmenting path
+        # Step 3: Randomly select frames to augment
+        if self.num_augmented_frames < self.reduced_len:
+            augmenting_path = self.randomly_apply_augmentation(augmenting_path)
+
+        # Step 4: Augment the features based on the augmenting path
         augmented_feature = self.apply_augmenting(feature, augmenting_path)
 
         return augmented_feature
@@ -83,10 +100,36 @@ class FrameAugment(nn.Module):
             gumbel_noise = -torch.log(-torch.log(torch.rand_like(logits) + EPS) + EPS)
 
             # Add Gumbel noise and apply softmax with temperature scaling
-            return F.softmax(gumbel_noise, dim=-1)
+            return F.softmax(gumbel_noise / self.temperature, dim=-1)
 
         else:
             raise ValueError(f"Unsupported activation type: {self.evd_type}")
+
+    def randomly_apply_augmentation(self, augmenting_path):
+        """
+        Randomly selects frames to apply augmentation to.
+
+        Args:
+            augmenting_path (Tensor): A tensor of shape [batch, reduced_len, seq_len].
+
+        Returns:
+            augmenting_path (Tensor): A tensor where only selected frames are augmented.
+        """
+        batch_size, reduced_len, seq_len = augmenting_path.size()
+
+        # Create a mask to select frames for augmentation
+        mask = torch.zeros(batch_size, reduced_len, 1, device=augmenting_path.device)
+        
+        # Randomly select indices based on num_augmented_frames
+        random_indices = torch.randperm(reduced_len)[:self.num_augmented_frames]
+        
+        # Set the selected frames to be augmented
+        mask[:, random_indices, :] = 1
+
+        # Apply the mask to the augmenting path (only selected frames will have augmenting applied)
+        augmenting_path = augmenting_path * mask
+
+        return augmenting_path
 
     def apply_augmenting(self, feature, augmenting_path):
         """
@@ -94,13 +137,12 @@ class FrameAugment(nn.Module):
 
         Args:
             feature (Tensor): A tensor of shape [batch, seq_len, feat_dim].
-            augmenting_path (Tensor): A tensor of shape [batch, seq_len, seq_len].
+            augmenting_path (Tensor): A tensor of shape [batch, reduced_len, seq_len].
 
         Returns:
-            augmented_feature (Tensor): augmented feature of shape [batch, seq_len, feat_dim].
+            augmented_feature (Tensor): augmented feature of shape [batch, reduced_len, feat_dim].
         """
         # Use einsum to apply augmenting across the sequence length dimension
-        # Adjusted indices to match the dimensions
         augmented_feature = torch.einsum('bij,bjf->bif', augmenting_path, feature)  # [batch, reduced_len, feat_dim]
 
         return augmented_feature
@@ -117,7 +159,8 @@ class NAFA(nn.Module):
             feat_dim=self.input_f_dim,
             temperature=0.2, 
             frame_reduction_ratio=0.6,
-            evd_type='gumbel',  # Set the activation type
+            frame_augmentation_ratio=1.0,  # Use ratio instead of fixed number
+            evd_type='gumbel', 
             device='cuda'
         )
 

@@ -30,7 +30,7 @@ class FrameAugment(nn.Module):
             temperature (float): The temperature for the Gumbel-Softmax. Lower values make it sharper.
             frame_reduction_ratio (float): Ratio to reduce the sequence length (0 < ratio <= 1).
             frame_augmentation_ratio (float): Ratio of reduced_len frames to augment (0 <= ratio <= 1).
-            evd_type (str): Type of extreme value distribution to use.
+            evd_type (str): Type of extreme value distribution to use. either gumbel, frechet, or weibull
         """
         super(FrameAugment, self).__init__()
 
@@ -95,13 +95,20 @@ class FrameAugment(nn.Module):
         if self.evd_type == "gumbel":
             # Gumbel-Softmax path
             logits = mixing_matrix
-
             # Sample Gumbel noise
             gumbel_noise = -torch.log(-torch.log(torch.rand_like(logits) + EPS) + EPS)
-
             # Add Gumbel noise and apply softmax with temperature scaling
             return F.softmax(gumbel_noise / self.temperature, dim=-1)
-
+        elif self.evd_type == "frechet":
+            # Frechet distribution
+            alpha = 1.0  # shape parameter for Frechet
+            frechet_noise = torch.pow(-torch.log(torch.rand_like(mixing_matrix) + EPS), -1 / alpha)
+            return F.softmax(frechet_noise / self.temperature, dim=-1)
+        elif self.evd_type == "weibull":
+            # Weibull distribution
+            beta = 1.5  # shape parameter for Weibull
+            weibull_noise = torch.pow(-torch.log(1 - torch.rand_like(mixing_matrix) + EPS), 1 / beta)
+            return F.softmax(weibull_noise / self.temperature, dim=-1)
         else:
             raise ValueError(f"Unsupported activation type: {self.evd_type}")
 
@@ -159,8 +166,8 @@ class NAFA(nn.Module):
             feat_dim=self.input_f_dim,
             temperature=0.2, 
             frame_reduction_ratio=0.6,
-            frame_augmentation_ratio=0.9,  # Use ratio instead of fixed number
-            evd_type='gumbel', 
+            frame_augmentation_ratio=1.0,  # Use ratio instead of fixed number
+            evd_type='weibull', 
             device='cuda'
         )
 

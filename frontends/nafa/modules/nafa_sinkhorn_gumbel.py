@@ -16,53 +16,49 @@ class FrameAugment(nn.Module):
         seq_len, 
         feat_dim, 
         temperature=0.2, 
-        alpha=0.5,    # Alignment weight
+        sinkhorn_iters=10, 
         device='cuda'
     ):
         super(FrameAugment, self).__init__()
-        
-        # Initialize attributes
+
+        # Initialize sequence length, temperature, and device
         self.seq_len = seq_len
         self.temperature = temperature
-        self.alpha = alpha
-        self.device = device
-        
-        # Template noise matrix
+        self.sinkhorn_iters = sinkhorn_iters
         self.noise_template = torch.randn(1, seq_len, seq_len, device=device)
 
     def forward(self, feature):
         batch_size, seq_len, feat_dim = feature.size()
-        
-        # Expand noise template to batch size
+
+        # Expand noise template to match batch size
         mixing_matrix = self.noise_template.expand(batch_size, -1, -1)
         
-        # Compute alignment-aware augmenting path
-        augmenting_path = self.compute_augmenting_path(mixing_matrix, feature)
+        # Apply Gumbel noise and Sinkhorn normalization
+        augmenting_path = self.compute_augmenting_path(mixing_matrix)
         
-        # Apply augmentation
+        # Apply augmented path to the feature tensor
         augmented_feature = self.apply_augmenting(feature, augmenting_path)
         return augmented_feature
 
-    def compute_augmenting_path(self, mixing_matrix, feature):
-        # Generate Gumbel noise
+    def compute_augmenting_path(self, mixing_matrix):
+        # Add Gumbel noise
         gumbel_noise = -torch.log(-torch.log(torch.rand_like(mixing_matrix) + EPS) + EPS)
         
-        # Normalize Gumbel noise with softmax
-        normalized_gumbel = F.softmax(gumbel_noise / self.temperature, dim=-1)
+        # Add Gumbel noise to the mixing matrix
+        perturbed_matrix = (mixing_matrix + gumbel_noise) / self.temperature
         
-        # Compute alignment matrix using cosine similarity
-        feature_flat = feature.reshape(feature.size(0), feature.size(1), -1)
-        alignment_matrix = torch.einsum('bij,bkj->bik', feature_flat, feature_flat)  # Cosine similarity
-        alignment_matrix = F.softmax(alignment_matrix, dim=-1)
+        # Apply the Sinkhorn normalization
+        for _ in range(self.sinkhorn_iters):
+            perturbed_matrix = F.softmax(perturbed_matrix, dim=-1)
+            perturbed_matrix = F.softmax(perturbed_matrix, dim=-2)
         
-        # Combine normalized Gumbel noise with alignment matrix
-        augmenting_path = self.alpha * normalized_gumbel + (1 - self.alpha) * alignment_matrix
-        return augmenting_path
+        return perturbed_matrix
 
     def apply_augmenting(self, feature, augmenting_path):
-        # Apply the augmenting path with matrix multiplication
+        # Apply augmentation via matrix multiplication on the frame dimension
         augmented_feature = torch.einsum('bij,bjf->bif', augmenting_path, feature)
         return augmented_feature
+
 
 class NAFA(nn.Module):
     def __init__(self, in_t_dim, in_f_dim):

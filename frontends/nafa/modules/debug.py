@@ -1,40 +1,75 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
-class ATIBN(nn.Module):
-    def __init__(self, feat_dim, seq_len):
-        super(ATIBN, self).__init__()
-        self.feat_dim = feat_dim
+EPS = 1e-9
+
+class FrameAugment(nn.Module):
+    def __init__(
+        self, 
+        seq_len, 
+        feat_dim, 
+        temperature=0.2, 
+        alpha=0.5,    # Alignment weight
+        device='cuda'
+    ):
+        super(FrameAugment, self).__init__()
+        
+        # Initialize attributes
         self.seq_len = seq_len
+        self.temperature = temperature
+        self.alpha = alpha
+        self.device = device
+        
+        # Template noise matrix
+        self.noise_template = torch.randn(1, seq_len, seq_len, device=device)
 
-    def forward(self, x):
-        # Calculate Mutual Information for temporal dimension (using pairwise cosine similarity as proxy)
-        cosine_similarity = torch.cosine_similarity(x[:, :-1, :], x[:, 1:, :], dim=-1)
-        mutual_information = 1 - cosine_similarity  # Proxy for MI; high when frames are similar
+    def forward(self, feature):
+        batch_size, seq_len, feat_dim = feature.size()
+        
+        # Expand noise template to batch size
+        mixing_matrix = self.noise_template.expand(batch_size, -1, -1)
+        
+        # Compute alignment-aware augmenting path
+        augmenting_path = self.compute_augmenting_path(mixing_matrix, feature)
+        
+        # Apply augmentation
+        augmented_feature = self.apply_augmenting(feature, augmenting_path)
+        return augmented_feature
 
-        # Identify high mutual information frames for noise application
-        high_mi_mask = mutual_information > mutual_information.mean(dim=1, keepdim=True)
-        high_mi_mask = torch.cat([high_mi_mask, torch.zeros_like(high_mi_mask[:, :1])], dim=1)  # Pad to match x
+    def compute_augmenting_path(self, mixing_matrix, feature):
+        # Generate Gumbel noise
+        gumbel_noise = -torch.log(-torch.log(torch.rand_like(mixing_matrix) + EPS) + EPS)
+        
+        # Normalize Gumbel noise with softmax
+        normalized_gumbel = F.softmax(gumbel_noise / self.temperature, dim=-1)
+        
+        # Compute alignment matrix using cosine similarity
+        feature_flat = feature.reshape(feature.size(0), feature.size(1), -1)
+        alignment_matrix = torch.einsum('bij,bkj->bik', feature_flat, feature_flat)  # Cosine similarity
+        alignment_matrix = F.softmax(alignment_matrix, dim=-1)
+        
+        # Combine normalized Gumbel noise with alignment matrix
+        augmenting_path = self.alpha * normalized_gumbel + (1 - self.alpha) * alignment_matrix
+        return augmenting_path
 
-        # Generate Gaussian noise with shape [batch, seq_len, seq_len]
-        noise = torch.randn(x.size(0), self.seq_len, self.seq_len).to(x.device)
-        noise = noise * high_mi_mask.unsqueeze(-1)  # Apply noise only on high-MI frames
+    def apply_augmenting(self, feature, augmenting_path):
+        # Apply the augmenting path with matrix multiplication
+        augmented_feature = torch.einsum('bij,bjf->bif', augmenting_path, feature)
+        return augmented_feature
 
-        # Apply the noise through matrix multiplication
-        x_noisy = torch.bmm(noise, x)  # Shape: [batch, seq_len, feat_dim]
-        return x_noisy
-
-# Testing the ATIBN Layer
+# Testing the implementation
 if __name__ == "__main__":
     # Define input sizes
     seq_len = 251
     feat_dim = 64
     batch_size = 200
-    
-    # Initialize synthetic data and ATIBN layer
-    data = torch.randn(batch_size, seq_len, feat_dim)
-    atibn_layer = ATIBN(feat_dim, seq_len)
-    
-    # Apply ATIBN to input data
-    augmented_data = atibn_layer(data)
-    print("Shape of augmented data:", augmented_data.shape)  # Expected output: [batch_size, seq_len, feat_dim]
+
+    # Initialize model and test input
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model = FrameAugment(seq_len=seq_len, feat_dim=feat_dim, temperature=0.2, alpha=0.5, device=device).to(device)
+    test_input = torch.randn(batch_size, seq_len, feat_dim, device=device)
+
+    # Run forward pass
+    output = model(test_input)
+    print("Output shape:", output.shape)

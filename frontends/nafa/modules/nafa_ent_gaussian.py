@@ -16,53 +16,52 @@ class FrameAugment(nn.Module):
         seq_len, 
         feat_dim, 
         temperature=0.2, 
-        alpha=0.5,    # Alignment weight
+        entropy_level=0.5, 
         device='cuda'
-    ):
+        ):
         super(FrameAugment, self).__init__()
         
-        # Initialize attributes
+        # Define sequence length, entropy level, and noise template on the specified device
         self.seq_len = seq_len
+        self.entropy_level = entropy_level
         self.temperature = temperature
-        self.alpha = alpha
         self.device = device
-        
-        # Template noise matrix
-        self.noise_template = torch.randn(1, seq_len, seq_len, device=device)
+        self.noise_template = torch.randint(low=1, high=10, size=(1, seq_len, seq_len)).float().to(device)
 
     def forward(self, feature):
+        # Move feature to model's device to ensure compatibility
+        feature = feature.to(self.device)
+        
         batch_size, seq_len, feat_dim = feature.size()
-        
-        # Expand noise template to batch size
         mixing_matrix = self.noise_template.expand(batch_size, -1, -1)
-        
-        # Compute alignment-aware augmenting path
-        augmenting_path = self.compute_augmenting_path(mixing_matrix, feature)
-        
-        # Apply augmentation
+        augmenting_path = self.compute_augmenting_path(mixing_matrix)
         augmented_feature = self.apply_augmenting(feature, augmenting_path)
         return augmented_feature
 
-    def compute_augmenting_path(self, mixing_matrix, feature):
-        # Generate Gumbel noise
-        gumbel_noise = -torch.log(-torch.log(torch.rand_like(mixing_matrix) + EPS) + EPS)
+    def compute_augmenting_path(self, mixing_matrix):
+        # Normalize using softmax and then apply entropy constraint
+        modulated_noise = F.softmax(mixing_matrix / self.temperature, dim=-1)
         
-        # Normalize Gumbel noise with softmax
-        normalized_gumbel = F.softmax(gumbel_noise / self.temperature, dim=-1)
+        # Apply discrete entropy modulation by adjusting values to match entropy constraints
+        modulated_noise = self.entropy_constrained_resampling(modulated_noise, self.entropy_level)
+        return modulated_noise
+
+    def entropy_constrained_resampling(self, noise, entropy_target):
+        # Enforce entropy target on the mixing matrix along the frame dimension
+        entropy_values = -torch.sum(noise * torch.log(noise + 1e-8), dim=-1, keepdim=True)
+        noise_adjustment = (entropy_target - entropy_values)
         
-        # Compute alignment matrix using cosine similarity
-        feature_flat = feature.reshape(feature.size(0), feature.size(1), -1)
-        alignment_matrix = torch.einsum('bij,bkj->bik', feature_flat, feature_flat)  # Cosine similarity
-        alignment_matrix = F.softmax(alignment_matrix, dim=-1)
+        # Scale the adjustment back into the noise matrix
+        adjusted_noise = noise + noise_adjustment * torch.sign(noise)
+        adjusted_noise = F.softmax(adjusted_noise / self.temperature, dim=-1)
         
-        # Combine normalized Gumbel noise with alignment matrix
-        augmenting_path = self.alpha * normalized_gumbel + (1 - self.alpha) * alignment_matrix
-        return augmenting_path
+        return adjusted_noise
 
     def apply_augmenting(self, feature, augmenting_path):
-        # Apply the augmenting path with matrix multiplication
+        # Apply the augmenting path to the input features
         augmented_feature = torch.einsum('bij,bjf->bif', augmenting_path, feature)
         return augmented_feature
+
 
 class NAFA(nn.Module):
     def __init__(self, in_t_dim, in_f_dim):

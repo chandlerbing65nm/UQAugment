@@ -107,24 +107,24 @@ class FrameAugment(nn.Module):
 
     def randomly_apply_augmentation(self, augmenting_path):
         """
-        Randomly selects frames to apply augmentation to.
+        Applies augmentation to a single contiguous block of frames.
 
         Args:
             augmenting_path (Tensor): A tensor of shape [batch, reduced_len, seq_len].
 
         Returns:
-            augmenting_path (Tensor): A tensor where only selected frames are augmented.
+            augmenting_path (Tensor): A tensor where only a contiguous block of frames is augmented.
         """
         batch_size, reduced_len, seq_len = augmenting_path.size()
 
-        # Create a mask to select frames for augmentation
+        # Create a mask to select a contiguous block of frames for augmentation
         mask = torch.zeros(batch_size, reduced_len, 1, device=augmenting_path.device)
+
+        # Randomly select a starting index for the block
+        start_index = torch.randint(0, reduced_len - self.num_augmented_frames + 1, (1,)).item()
         
-        # Randomly select indices based on num_augmented_frames
-        random_indices = torch.randperm(reduced_len)[:self.num_augmented_frames]
-        
-        # Set the selected frames to be augmented
-        mask[:, random_indices, :] = 1
+        # Create a contiguous block from start_index
+        mask[:, start_index:start_index + self.num_augmented_frames, :] = 1
 
         # Apply the mask to the augmenting path (only selected frames will have augmenting applied)
         augmenting_path = augmenting_path * mask
@@ -159,7 +159,7 @@ class NAFA(nn.Module):
             feat_dim=self.input_f_dim,
             temperature=0.2, 
             frame_reduction_ratio=0.6,
-            frame_augmentation_ratio=1.0,  # Use ratio instead of fixed number
+            frame_augmentation_ratio=0.9,  # Use ratio instead of fixed number
             evd_type='gumbel', 
             device='cuda'
         )

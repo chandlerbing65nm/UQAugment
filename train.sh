@@ -10,7 +10,7 @@
 #SBATCH --partition=small-g            
 #SBATCH --time=24:00:00           
 #SBATCH --account=project_465001389
-#SBATCH --output=/users/doloriel/work/slurm/affia3k/cnn6-nafa(sigmoid_unified_noise_0.2_temp_0.6reduced2)-lumi.out
+#SBATCH --output=/users/doloriel/work/slurm/affia3k/cnn6-nafa(gumsig_unified_noise_0.2_temp_0.6reduced3)-lumi.out
 
 # Load necessary modules (if required)
 conda init

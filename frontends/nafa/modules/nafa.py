@@ -4,6 +4,8 @@ import torch.nn.functional as F
 import os
 import matplotlib.pyplot as plt
 
+from frontends.nafa.modules.dilated_convolutions_1d.conv import DilatedConv, DilatedConv_Out_128
+
 EPS = 1e-12
 RESCALE_INTERVEL_MIN = 1e-4
 RESCALE_INTERVEL_MAX = 1 - 1e-4
@@ -73,45 +75,18 @@ class FrameAugment(nn.Module):
         Returns:
             augmenting_path (Tensor): An augmenting path matrix.
         """
-        if self.activation_type == "gumbel_softmax":
+        if self.activation_type == "gumbel":
             # Gumbel-Softmax path
-            logits = -mixing_matrix
-            return self.gumbel_softmax_sample(logits, temperature=self.temperature)
-        elif self.activation_type == "sigmoid":
-            # Sigmoid activation
-            logits = -mixing_matrix
-            return torch.sigmoid(logits)
-        elif self.activation_type == "bernoulli":
-            # Bernoulli sampling (requires logits between 0 and 1)
             logits = mixing_matrix
-            return torch.bernoulli(logits)
-        elif self.activation_type == "softmax":
-            # Standard softmax
-            logits = -mixing_matrix
-            return F.softmax(logits, dim=-1)
-        elif self.activation_type == "temp_softmax":
-            # Softmax with temperature scaling
-            logits = -mixing_matrix
-            return F.softmax(logits / self.temperature, dim=-1)
+
+            # Sample Gumbel noise
+            gumbel_noise = -torch.log(-torch.log(torch.rand_like(logits) + EPS) + EPS)
+
+            # Add Gumbel noise and apply softmax with temperature scaling
+            return torch.sigmoid(gumbel_noise)
+
         else:
             raise ValueError(f"Unsupported activation type: {self.activation_type}")
-
-    def gumbel_softmax_sample(self, logits, temperature=1.0):
-        """
-        Samples from the Gumbel-Softmax distribution with the specified temperature.
-
-        Args:
-            logits (Tensor): Input logits.
-            temperature (float): Temperature for Gumbel-Softmax. Lower temperatures make it more like hard selection.
-
-        Returns:
-            Tensor: Softmax with Gumbel noise added.
-        """
-        # Sample Gumbel noise
-        gumbel_noise = -torch.log(-torch.log(torch.rand_like(logits) + EPS) + EPS)
-
-        # Add Gumbel noise and apply softmax with temperature scaling
-        return F.softmax((logits + gumbel_noise) / temperature, dim=-1)
 
     def apply_augmenting(self, feature, augmenting_path):
         """
@@ -142,7 +117,7 @@ class NAFA(nn.Module):
             feat_dim=self.input_f_dim,
             temperature=0.2, 
             frame_reduction_ratio=0.6,
-            activation_type='sigmoid',  # Set the activation type
+            activation_type='gumbel',  # Set the activation type
             device='cuda'
         )
 

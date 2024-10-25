@@ -11,7 +11,7 @@ RESCALE_INTERVEL_MIN = 1e-4
 RESCALE_INTERVEL_MAX = 1 - 1e-4
 
 class FrameAugment(nn.Module):
-    def __init__(self, seq_len, feat_dim, temperature=0.2, frame_reduction_ratio=None, activation_type="gumbel_softmax", device='cuda'):
+    def __init__(self, seq_len, feat_dim, temperature=0.2, frame_reduction_ratio=None, evd_type="gumbel", device='cuda'):
         """
         Initialize the FrameAugment module with an option for different augmenting paths.
 
@@ -20,7 +20,7 @@ class FrameAugment(nn.Module):
             feat_dim (int): The dimensionality of each feature.
             temperature (float): The temperature for the Gumbel-Softmax. Lower values make it sharper.
             frame_reduction_ratio (float): Ratio to reduce the sequence length (0 < ratio <= 1).
-            activation_type (str): Type of activation to use. Options: "gumbel_softmax", "sigmoid", "bernoulli", "softmax", "temp_softmax".
+            evd_type (str): Type of extreme value distribution to use.
         """
         super(FrameAugment, self).__init__()
 
@@ -38,7 +38,7 @@ class FrameAugment(nn.Module):
         self.noise_template = torch.randn(1, self.reduced_len, seq_len).to(device=device)
 
         self.temperature = temperature
-        self.activation_type = activation_type
+        self.evd_type = evd_type
 
 
     def forward(self, feature):
@@ -75,7 +75,7 @@ class FrameAugment(nn.Module):
         Returns:
             augmenting_path (Tensor): An augmenting path matrix.
         """
-        if self.activation_type == "gumbel":
+        if self.evd_type == "gumbel":
             # Gumbel-Softmax path
             logits = mixing_matrix
 
@@ -83,10 +83,10 @@ class FrameAugment(nn.Module):
             gumbel_noise = -torch.log(-torch.log(torch.rand_like(logits) + EPS) + EPS)
 
             # Add Gumbel noise and apply softmax with temperature scaling
-            return torch.sigmoid(gumbel_noise)
+            return F.softmax(gumbel_noise, dim=-1)
 
         else:
-            raise ValueError(f"Unsupported activation type: {self.activation_type}")
+            raise ValueError(f"Unsupported activation type: {self.evd_type}")
 
     def apply_augmenting(self, feature, augmenting_path):
         """
@@ -117,7 +117,7 @@ class NAFA(nn.Module):
             feat_dim=self.input_f_dim,
             temperature=0.2, 
             frame_reduction_ratio=0.6,
-            activation_type='gumbel',  # Set the activation type
+            evd_type='gumbel',  # Set the activation type
             device='cuda'
         )
 

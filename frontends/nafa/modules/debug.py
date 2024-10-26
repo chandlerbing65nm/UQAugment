@@ -2,74 +2,59 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-EPS = 1e-9
-
-class FrameAugment(nn.Module):
-    def __init__(
-        self, 
-        seq_len, 
-        feat_dim, 
-        temperature=0.2, 
-        alpha=0.5,    # Alignment weight
-        device='cuda'
-    ):
-        super(FrameAugment, self).__init__()
-        
-        # Initialize attributes
+class FrameAugmentSSNI(nn.Module):
+    def __init__(self, seq_len, feat_dim, device='cuda'):
+        super(FrameAugmentSSNI, self).__init__()
         self.seq_len = seq_len
-        self.temperature = temperature
-        self.alpha = alpha
         self.device = device
-        
-        # Template noise matrix
-        self.noise_template = torch.randn(1, seq_len, seq_len, device=device)
 
     def forward(self, feature):
         batch_size, seq_len, feat_dim = feature.size()
-        
-        # Expand noise template to batch size
-        mixing_matrix = self.noise_template.expand(batch_size, -1, -1)
-        
-        # Compute alignment-aware augmenting path
-        augmenting_path = self.compute_augmenting_path(mixing_matrix, feature)
-        
-        # Apply augmentation
+
+        # Compute stability-driven noise
+        stability_scores = self.compute_stability(feature)
+        augmenting_path = self.compute_augmenting_path(batch_size, seq_len, stability_scores)
+
+        # Apply stability-aware noise augmentation
         augmented_feature = self.apply_augmenting(feature, augmenting_path)
+        
         return augmented_feature
 
-    def compute_augmenting_path(self, mixing_matrix, feature):
-        # Generate Gumbel noise
-        gumbel_noise = -torch.log(-torch.log(torch.rand_like(mixing_matrix) + EPS) + EPS)
+    def compute_stability(self, feature):
+        # Compute variance along the frame dimension as stability measure
+        variance_scores = torch.var(feature, dim=2, keepdim=True)  # Shape: [batch, seq_len, 1]
         
-        # Normalize Gumbel noise with softmax
-        normalized_gumbel = F.softmax(gumbel_noise / self.temperature, dim=-1)
+        # Normalize variance to create stability scores (inverse of variance)
+        stability_scores = 1 / (variance_scores + 1e-6)  # Add epsilon to prevent division by zero
+        stability_scores = stability_scores / stability_scores.max()  # Normalize to [0, 1]
         
-        # Compute alignment matrix using cosine similarity
-        feature_flat = feature.reshape(feature.size(0), feature.size(1), -1)
-        alignment_matrix = torch.einsum('bij,bkj->bik', feature_flat, feature_flat)  # Cosine similarity
-        alignment_matrix = F.softmax(alignment_matrix, dim=-1)
+        return stability_scores.squeeze(-1)  # Shape: [batch, seq_len]
+
+    def compute_augmenting_path(self, batch_size, seq_len, stability_scores):
+        # Generate Gaussian noise and apply softmax normalization along frame dimension
+        gaussian_noise = torch.normal(0, 1, size=(batch_size, seq_len, seq_len), device=self.device)
         
-        # Combine normalized Gumbel noise with alignment matrix
-        augmenting_path = self.alpha * normalized_gumbel + (1 - self.alpha) * alignment_matrix
+        # Scale noise based on stability scores (higher stability gets more noise)
+        noise_scaled = gaussian_noise * stability_scores.unsqueeze(2)
+        
+        augmenting_path = F.softmax(noise_scaled, dim=-1)
+        
         return augmenting_path
 
     def apply_augmenting(self, feature, augmenting_path):
-        # Apply the augmenting path with matrix multiplication
+        # Matrix multiplication of feature with stability-aware noise
         augmented_feature = torch.einsum('bij,bjf->bif', augmenting_path, feature)
+        
         return augmented_feature
 
-# Testing the implementation
 if __name__ == "__main__":
     # Define input sizes
-    seq_len = 251
+    frames = 251
     feat_dim = 64
     batch_size = 200
-
-    # Initialize model and test input
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model = FrameAugment(seq_len=seq_len, feat_dim=feat_dim, temperature=0.2, alpha=0.5, device=device).to(device)
-    test_input = torch.randn(batch_size, seq_len, feat_dim, device=device)
-
-    # Run forward pass
-    output = model(test_input)
+    
+    input_spectrogram = torch.randn(batch_size, frames, feat_dim).cuda()
+    model = FrameAugmentSSNI(seq_len=frames, feat_dim=feat_dim).cuda()
+    
+    output = model(input_spectrogram)
     print("Output shape:", output.shape)

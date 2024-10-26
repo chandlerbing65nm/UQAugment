@@ -10,7 +10,7 @@
 #SBATCH --partition=small-g            
 #SBATCH --time=24:00:00           
 #SBATCH --account=project_465001389
-#SBATCH --output=/users/doloriel/work/slurm/affia3k/cnn6-nafa(align_gumbel2)-lumi.out
+#SBATCH --output=/users/doloriel/work/slurm/affia3k/cnn6-nafa(covar_gumbel2)-lumi.out
 
 # Load necessary modules (if required)
 conda init

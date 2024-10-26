@@ -4,57 +4,60 @@ import torch.nn.functional as F
 import os
 import matplotlib.pyplot as plt
 
-from frontends.nafa.modules.core import Base
 from frontends.nafa.modules.dilated_convolutions_1d.conv import DilatedConv, DilatedConv_Out_128
-
-from frontends.nafa.modules.pooling import Pooling_layer
 
 EPS = 1e-12
 RESCALE_INTERVEL_MIN = 1e-4
 RESCALE_INTERVEL_MAX = 1 - 1e-4
 
-class FrameAlignment(nn.Module):
-    def __init__(self, seq_len, feat_dim, window_size=5):
-        super(FrameAlignment, self).__init__()
-        self.window_size = window_size
+class FrameMixup(nn.Module):
+    def __init__(
+        self, 
+        seq_len, 
+        feat_dim, 
+        temperature=0.2, 
+        frame_reduction_ratio=None, 
+        frame_augmentation_ratio=1.0,  # Ratio of frames to augment
+        device='cuda'
+        ):
+        super(FrameMixup, self).__init__()
+        self.seq_len = seq_len
+        self.frame_reduction_ratio = frame_reduction_ratio
+        if frame_reduction_ratio is not None:
+            assert 0 < frame_reduction_ratio <= 1, "frame_reduction_ratio must be between 0 and 1"
+            self.reduced_len = max(1, int(seq_len * (1 - frame_reduction_ratio)))
+        else:
+            self.reduced_len = self.seq_len
+        assert 0 <= frame_augmentation_ratio <= 1, "frame_augmentation_ratio must be between 0 and 1"
+        self.num_augmented_frames = max(1, int(self.reduced_len * frame_augmentation_ratio))
+        self.noise_template = torch.randn(1, self.reduced_len, seq_len).to(device=device)  # [1, reduced_len, seq_len]
+        self.temperature = temperature
 
-    def forward(self, score, feature):
-        batch_size, seq_len, feat_dim = feature.size()
-        alignment_matrix = self.compute_alignment_matrix(score)
-        soft_aligning_path = self.compute_soft_aligning_path(alignment_matrix)
-        aligned_feature = self.apply_aligning(feature, soft_aligning_path)
-        local_alignment_loss = self.compute_local_alignment_loss(feature, aligned_feature)
-        return aligned_feature, local_alignment_loss
+    def forward(self, feature):
+        batch_size, seq_len, feat_dim = feature.size()  # feature: [batch_size, seq_len, feat_dim]
+        noise_template = self.noise_template.expand(batch_size, -1, -1)  # [batch_size, reduced_len, seq_len]
+        augmenting_path = self.compute_augmenting_path(noise_template)  # [batch_size, reduced_len, seq_len]
+        if self.num_augmented_frames < self.reduced_len:
+            augmenting_path = self.randomly_apply_augmentation(augmenting_path)  # [batch_size, reduced_len, seq_len]
+        augmented_feature = self.apply_augmenting(feature, augmenting_path)  # [batch_size, reduced_len, feat_dim]
+        return augmented_feature  # [batch_size, reduced_len, feat_dim]
 
-    def compute_alignment_matrix(self, score):
-        batch_size, seq_len, _ = score.size()
-        projection_template = torch.normal(mean=0, std=1, size=(batch_size, seq_len, seq_len)).to(device=score.device) # [batch, seq_len, seq_len]
-        score = torch.diag_embed(score.squeeze(-1)) # [batch, seq_len, seq_len]
-        alignment_matrix = torch.matmul(projection_template, score)  # [batch, seq_len, seq_len]
-        return alignment_matrix
+    def compute_augmenting_path(self, noise_template):
+        mu, sigma = 0, 1  # mean and standard deviation for Gaussian
+        gaussian_noise = torch.normal(mu, sigma, size=noise_template.size(), device=noise_template.device)  # [batch_size, reduced_len, seq_len]
+        return F.softmax(gaussian_noise / self.temperature, dim=-1)  # [batch_size, reduced_len, seq_len]
 
-    def compute_soft_aligning_path(self, alignment_matrix):
-        soft_aligning_path = F.softmax(alignment_matrix, dim=-1) # [batch, seq_len, seq_len]
-        return soft_aligning_path
+    def randomly_apply_augmentation(self, augmenting_path):
+        batch_size, reduced_len, seq_len = augmenting_path.size()
+        mask = torch.zeros(batch_size, reduced_len, 1, device=augmenting_path.device)  # [batch_size, reduced_len, 1]
+        start_index = torch.randint(0, reduced_len - self.num_augmented_frames + 1, (1,)).item()
+        mask[:, start_index:start_index + self.num_augmented_frames, :] = 1  # mask with ones in selected frames
+        augmenting_path = augmenting_path * mask  # [batch_size, reduced_len, seq_len]
+        return augmenting_path  # [batch_size, reduced_len, seq_len]
 
-    def apply_aligning(self, feature, soft_aligning_path):
-        aligned_feature = torch.einsum('bij,bjf->bif', soft_aligning_path, feature)  # [batch, seq_len, feat_dim]
-        return aligned_feature
-
-    def compute_local_alignment_loss(self, feature, aligned_feature):
-        batch_size, seq_len, feat_dim = feature.size()
-        window_size = self.window_size
-
-        num_windows = seq_len - window_size + 1
-        input_windows = feature.unfold(dimension=1, size=window_size, step=1)  # [batch, num_windows, window_size, feat_dim]
-        aligned_windows = aligned_feature.unfold(dimension=1, size=window_size, step=1)  # [batch, num_windows, window_size, feat_dim]
-        input_windows_flat = input_windows.contiguous().view(batch_size, num_windows, -1)  # [batch, num_windows, window_size * feat_dim]
-        aligned_windows_flat = aligned_windows.contiguous().view(batch_size, num_windows, -1)  # [batch, num_windows, window_size * feat_dim]
-        input_norm = F.normalize(input_windows_flat, dim=2)
-        aligned_norm = F.normalize(aligned_windows_flat, dim=2)
-        cos_sim = (input_norm * aligned_norm).sum(dim=2)  # [batch, num_windows]
-        local_loss = (1 - cos_sim).mean()
-        return local_loss
+    def apply_augmenting(self, feature, augmenting_path):
+        augmented_feature = torch.einsum('bij,bjf->bif', augmenting_path, feature)  # [batch_size, reduced_len, feat_dim]
+        return augmented_feature  # [batch_size, reduced_len, feat_dim]
 
 
 class NAFA(nn.Module):
@@ -62,64 +65,26 @@ class NAFA(nn.Module):
         super().__init__()
         self.input_seq_length = in_t_dim
         self.input_f_dim = in_f_dim
-
-        # Dilated Convolution to learn importance scores
-        self.model = DilatedConv(
-            in_channels=self.input_f_dim,
-            out_channels=1,
-            dilation_rate=1,
-            input_size=self.input_seq_length,
-            kernel_size=5,
-            stride=1,
-        )
         
-        self.align = FrameAlignment(seq_len=self.input_seq_length, feat_dim=self.input_f_dim, window_size=10)
+        self.frame_augment = FrameMixup(
+            seq_len=self.input_seq_length, 
+            feat_dim=self.input_f_dim,
+            temperature=1.0, 
+            frame_reduction_ratio=None,
+            frame_augmentation_ratio=1.0,
+            device='cuda'
+        )
 
     def forward(self, x):
         ret = {}
 
-        # Compute the importance score using the dilated convolutional model
-        score = torch.sigmoid(self.model(x.permute(0, 2, 1)).permute(0, 2, 1))
-        score = self.score_norm(score, total_length=self.input_seq_length)
-
-        align_frame, align_loss = self.align(score, x.exp())
-        align_frame = torch.log(align_frame + EPS)
-
-        # import ipdb; ipdb.set_trace() 
-        # print(align_loss.item())
+        augment_frame = self.frame_augment(x.exp())
+        augment_frame = torch.log(augment_frame + EPS)
 
         # Final outputs
         ret["x"] = x
-        ret["score"] = score
-        ret["features"] = align_frame
-        ret["align_loss"] = align_loss
-
-        ret["total_loss"] = ret["align_loss"]
+        ret["features"] = augment_frame
+        ret["dummy"] = torch.tensor(0.0, device=x.device)
+        ret["total_loss"] = ret["dummy"]
 
         return ret
-
-    def score_norm(self, score, total_length):
-        sum_score = torch.sum(score, dim=(1, 2), keepdim=True)
-        score = (score / sum_score) * total_length
-        max_val = torch.max(score, dim=1)[0]
-        max_val = max_val[..., 0]
-        dims_need_norm = max_val >= 1
-        if torch.sum(dims_need_norm) > 0:
-            score[dims_need_norm] = (
-                score[dims_need_norm] / max_val[dims_need_norm][..., None, None]
-            )
-        if torch.sum(dims_need_norm) > 0:
-            sum_score = torch.sum(score, dim=(1, 2), keepdim=True)
-            distance_with_target_length = (total_length - sum_score)[:, 0, 0]
-            axis = torch.logical_and(
-                score < RESCALE_INTERVEL_MAX, score > RESCALE_INTERVEL_MIN
-            )
-            for i in range(score.size(0)):
-                if distance_with_target_length[i] >= 1:
-                    intervel = 1.0 - score[i][axis[i]]
-                    alpha = distance_with_target_length[i] / torch.sum(intervel)
-                    if alpha > 1:
-                        alpha = 1
-                    score[i][axis[i]] += intervel * alpha
-        ####################################################################
-        return score

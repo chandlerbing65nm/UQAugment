@@ -10,7 +10,7 @@
 #SBATCH --partition=small-g            
 #SBATCH --time=24:00:00           
 #SBATCH --account=project_465001389
-#SBATCH --output=/users/doloriel/work/slurm/affia3k/cnn6-nafa(align3)-lumi.out
+#SBATCH --output=/users/doloriel/work/slurm/affia3k/cnn6-nafa(gaussian_0.2temp2)-lumi.out
 
 # Load necessary modules (if required)
 conda init
@@ -18,8 +18,8 @@ conda activate uwac
 cd /users/doloriel/work/Repo/UWAC
 
 
-python train.py \
+srun python train.py \
     --model_name "panns_cnn6" \
-    --frontend "nafa" \
+    --spec_aug "nafa" \
     --batch_size 200 \
     --wandb_mode "offline"

@@ -2,37 +2,55 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class FrameAugment(nn.Module):
-    def __init__(self, seq_len, feat_dim, device='cuda'):
-        super(FrameAugment, self).__init__()
+class SVEMixup(nn.Module):
+    def __init__(self, seq_len, feat_dim, temperature=0.2, frame_reduction_ratio=None, frame_augmentation_ratio=1.0, device='cuda'):
+        super(SVEMixup, self).__init__()
         self.seq_len = seq_len
-        self.device = device
-
-        # Initialize learnable parameters for mean and standard deviation
-        self.mu = nn.Parameter(torch.zeros(1))
-        self.sigma_param = nn.Parameter(torch.ones(1))  # Use softplus to ensure positivity
+        self.frame_reduction_ratio = frame_reduction_ratio
+        if frame_reduction_ratio is not None:
+            assert 0 < frame_reduction_ratio <= 1, "frame_reduction_ratio must be between 0 and 1"
+            self.reduced_len = max(1, int(seq_len * (1 - frame_reduction_ratio)))
+        else:
+            self.reduced_len = self.seq_len
+        assert 0 <= frame_augmentation_ratio <= 1, "frame_augmentation_ratio must be between 0 and 1"
+        self.num_augmented_frames = max(1, int(self.reduced_len * frame_augmentation_ratio))
+        self.noise_template = torch.randn(1, self.reduced_len, seq_len).to(device=device)
+        self.temperature = temperature
 
     def forward(self, feature):
         batch_size, seq_len, feat_dim = feature.size()
-        augmenting_path = self.compute_augmenting_path(batch_size, seq_len)
+        noise_template = self.noise_template.expand(batch_size, -1, -1)
+        augmenting_path = self.compute_augmenting_path(noise_template)
+        
+        # Apply variance equalization
+        augmenting_path = self.apply_variance_equalization(augmenting_path)
+        
+        if self.num_augmented_frames < self.reduced_len:
+            augmenting_path = self.randomly_apply_augmentation(augmenting_path)
         augmented_feature = self.apply_augmenting(feature, augmenting_path)
         return augmented_feature
 
-    def compute_augmenting_path(self, batch_size, seq_len):
-        # Ensure sigma is positive using softplus
-        sigma = F.softplus(self.sigma_param)
+    def compute_augmenting_path(self, noise_template):
+        mu, sigma = 0, 1
+        gaussian_noise = torch.normal(mu, sigma, size=noise_template.size(), device=noise_template.device)
+        return F.softmax(gaussian_noise / self.temperature, dim=-1)
 
-        # Sample Gaussian noise with learnable mean and standard deviation
-        gaussian_noise = torch.normal(
-            self.mu.expand(batch_size, seq_len, seq_len),
-            sigma.expand(batch_size, seq_len, seq_len)
-        ).to(self.device)
+    def apply_variance_equalization(self, augmenting_path):
+        batch_variance = augmenting_path.var(dim=-1, unbiased=False)  # Variance per batch sample
+        variance_target = batch_variance.mean()  # Mean variance for the batch
+        
+        scaling_factors = torch.sqrt(variance_target / (batch_variance + 1e-8)).unsqueeze(-1)  # Scaling for variance
+        return augmenting_path * scaling_factors  # Scale augmenting path
 
-        # Apply softmax normalization along the frame dimension
-        return F.softmax(gaussian_noise, dim=-1)
+    def randomly_apply_augmentation(self, augmenting_path):
+        batch_size, reduced_len, seq_len = augmenting_path.size()
+        mask = torch.zeros(batch_size, reduced_len, 1, device=augmenting_path.device)
+        start_index = torch.randint(0, reduced_len - self.num_augmented_frames + 1, (1,)).item()
+        mask[:, start_index:start_index + self.num_augmented_frames, :] = 1
+        augmenting_path = augmenting_path * mask
+        return augmenting_path
 
     def apply_augmenting(self, feature, augmenting_path):
-        # Perform matrix multiplication to mix frames
         augmented_feature = torch.einsum('bij,bjf->bif', augmenting_path, feature)
         return augmented_feature
 
@@ -41,14 +59,12 @@ if __name__ == "__main__":
     frames = 251 
     feat_dim = 64 
     batch_size = 200
-
+    
+    # Generate random input
     input_spectrogram = torch.randn(batch_size, frames, feat_dim).cuda()
-
-    # Initialize FrameAugment
-    frame_augment = FrameAugment(seq_len=frames, feat_dim=feat_dim, device='cuda').cuda()
-
-    # Apply augmentation
-    augmented_spectrogram = frame_augment(input_spectrogram)
-
-    print("Original Spectrogram Shape:", input_spectrogram.shape)
-    print("Augmented Spectrogram Shape:", augmented_spectrogram.shape)
+    
+    # Initialize model and forward pass
+    model = SVEMixup(seq_len=frames, feat_dim=feat_dim, temperature=0.2, frame_reduction_ratio=None, frame_augmentation_ratio=1.0, device='cuda').cuda()
+    output = model(input_spectrogram)
+    
+    print("Output shape:", output.shape)

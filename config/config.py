@@ -45,6 +45,7 @@ def parse_args():
     # Augmentation Parameters
     augmentation = parser.add_argument_group('Augmentation Parameters')
     augmentation.add_argument('--audiomentations', action='store_true', help='Apply audiomentations')
+    augmentation.add_argument('--spec_aug',  type=str, default='specaugment', help='Name of the spectrogram augmentation')
     augmentation.add_argument('--filter_chance', type=float, default=0.13, help='Chance of applying filter')
 
     # Logging Parameters

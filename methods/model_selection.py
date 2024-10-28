@@ -17,6 +17,7 @@ def get_model(args):
             num_classes=args.num_classes,
             frontend=args.frontend,
             batch_size=args.batch_size,
+            args=args
         )
         model.load_from_pretrain("/scratch/project_465001389/chandler_scratch/Projects/UWAC/weights/Cnn6_mAP=0.343.pth")
     elif args.model_name == 'panns_resnet22':
@@ -72,6 +73,7 @@ def get_model(args):
             imagenet_pretrain=True,
             audioset_pretrain=True,
             model_size='base384',
+            args=args
         )
     else: 
         raise ValueError(f"Unknown model name: {args.model_name}")

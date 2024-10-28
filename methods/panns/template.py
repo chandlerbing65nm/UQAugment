@@ -29,10 +29,13 @@ from frontends.sincnet.frontend import SincNet
 from frontends.diffres.frontend import DiffRes
 from frontends.nafa.frontend import NAFA
 
+from torchlibrosa.stft import Spectrogram, LogmelFilterBank
+from torchlibrosa.augmentation import SpecAugmentation
+
 class PANNS_CNN6(nn.Module):
     def __init__(self, sample_rate, window_size, hop_size, mel_bins, fmin, 
                  fmax, num_classes, frontend='logmel', batch_size=200,
-                 freeze_base=False, device=None,
+                 freeze_base=False, device=None, args=None,
                  ):
         """Classifier for a new task using pretrained Cnn6 as a sub-module."""
         super(PANNS_CNN6, self).__init__()
@@ -53,6 +56,7 @@ class PANNS_CNN6(nn.Module):
         self.fmin = fmin
         self.fmax = fmax
         self.num_classes = num_classes
+        self.args = args
 
         # Step 1: Create base Cnn6 instance (original architecture)
         self.base = Cnn6(sample_rate, window_size, hop_size, mel_bins, fmin, 
@@ -68,77 +72,23 @@ class PANNS_CNN6(nn.Module):
         self.logmel_extractor = LogmelFilterBank(sr=sample_rate, n_fft=window_size, 
             n_mels=mel_bins, fmin=fmin, fmax=fmax, ref=ref, amin=amin, top_db=top_db, 
             freeze_parameters=True)
-            
-        # MFCC feature extractor
-        self.mfcc_extractor = torchaudio.transforms.MFCC(
-            sample_rate=sample_rate,
-            n_mfcc=mel_bins,  # This determines the number of MFCC coefficients
-            melkwargs={
-                "n_fft": window_size,
-                "n_mels": mel_bins,
-                "hop_length": hop_size,
-                "f_min": fmin,
-                "f_max": fmax,
-                "center": center,
-                "pad_mode": pad_mode
-            }
-        )
 
-        self.leaf_extractor = Leaf(
-            n_filters = 40,
-            sample_rate = sample_rate,
-            window_len = 16,
-            window_stride = 8,
-            init_min_freq = 50.0,
-            init_max_freq = sample_rate // 2,
-        )
+        # Spec augmenter
+        self.specaugment = SpecAugmentation(time_drop_width=64, time_stripes_num=2, 
+                                               freq_drop_width=8, freq_stripes_num=2)
 
-        self.diffres_extractor = DiffRes(
+        self.diffres = DiffRes(
             in_t_dim=251,
             in_f_dim=mel_bins,
             dimension_reduction_rate=0.60,
             learn_pos_emb=False
         )
 
-        self.nafa_extractor = NAFA(
+        self.nafa = NAFA(
             in_t_dim=251,
             in_f_dim=mel_bins,
         )
 
-        self.dmel_extractor = DMel(
-            init_lambd=5.0, 
-            n_fft=window_size, 
-            win_length=window_size, 
-            hop_length=hop_size
-            )
-
-        self.dstft_extractor = DSTFT(
-            x=torch.randn(batch_size, sample_rate*2).to('cuda'),
-            win_length=window_size,
-            support=window_size,
-            stride=hop_size,
-            pow=2,
-            win_pow=2,
-            win_requires_grad=True,
-            stride_requires_grad=True,
-            pow_requires_grad=False,    
-            win_p="t",
-            win_min=window_size//2,              
-            win_max=window_size,            
-            stride_min=hop_size//2,          
-            stride_max=hop_size,           
-            sr=sample_rate,
-            )
-
-        self.sincnet_extractor = SincNet(
-            out_channels=mel_bins, 
-            sample_rate=sample_rate, 
-            kernel_size=hop_size, 
-            window_size=window_size, 
-            hop_size=hop_size, 
-            )
-
-        self.bn0_ens = nn.BatchNorm2d(mel_bins*3)
         # Transfer to another task layer
         self.fc_transfer = nn.Linear(512, num_classes, bias=True)  # Assuming 512 is embedding size
         
@@ -193,81 +143,31 @@ class PANNS_CNN6(nn.Module):
 
     def forward(self, input, mixup_lambda=None):
         """Input: (batch_size, data_length)"""
-        
-        if self.frontend == 'mfcc':
-            # If MFCC is chosen, extract MFCC features
-            x = self.mfcc_extractor(input)
-            x = x.unsqueeze(1).transpose(2, 3) 
 
-            # Pass the precomputed features (MFCC or LogMel) into the base model conv blocks
-            x = x.transpose(1, 3)  # Align dimensions for the base model
-            x = self.base.bn0(x)   # Apply the batch normalization from base
-            x = x.transpose(1, 3)
+        x = self.spectrogram_extractor(input)  # (batch, time_steps, freq_bins)
+        x = self.logmel_extractor(x)  # (batch, time_steps, mel_bins)
 
+        # Pass the precomputed features (MFCC or LogMel) into the base model conv blocks
+        x = x.transpose(1, 3)  # Align dimensions for the base model
+        x = self.base.bn0(x)   # Apply the batch normalization from base
+        x = x.transpose(1, 3)
+
+        if self.args.spec_aug == 'diffres':
+            x = x.squeeze(1)
+            ret = self.diffres(x)
+            guide_loss = ret["guide_loss"]
+            x = ret["features"].unsqueeze(1)
+
+        elif self.args.spec_aug == 'nafa':
+            x = x.squeeze(1)
+            x = self.nafa(x)
+            x = x.unsqueeze(1)
+
+        elif self.args.spec_aug == 'specaugment':
             if self.training:
-                x = self.base.spec_augmenter(x)
+                x = self.spec_augmenter(x)
 
-        elif self.frontend == 'chroma':
-            # Extract chroma features using librosa's chroma_stft function
-            input_np = input.cpu().numpy()  # Convert to NumPy for librosa
-            chroma_features = []
-            for i in range(input_np.shape[0]):  # Loop over batch
-                chroma = librosa.feature.chroma_stft(y=input_np[i], sr=self.sample_rate, n_fft=self.window_size, 
-                                                     hop_length=self.hop_size, win_length=self.window_size, 
-                                                     window='hann', n_chroma=self.mel_bins, tuning=0)
-                chroma_features.append(chroma)
-            chroma_features = np.stack(chroma_features, axis=0)  # Shape: (batch_size, n_chroma, time_steps)
-            x = torch.tensor(chroma_features, dtype=torch.float32, device=input.device)  # Convert back to tensor
-            x = x.unsqueeze(1).transpose(2, 3)  # Shape: (batch_size, 1, n_chroma, time_steps)
-
-            # Pass the precomputed features (MFCC or LogMel) into the base model conv blocks
-            x = x.transpose(1, 3)  # Align dimensions for the base model
-            x = self.base.bn0(x)   # Apply the batch normalization from base
-            x = x.transpose(1, 3)
-
-            if self.training:
-                x = self.base.spec_augmenter(x)
-
-        elif self.frontend == 'ensemble':
-            # If MFCC is chosen, extract MFCC features
-            x1 = self.mfcc_extractor(input)
-            x1 = x1.unsqueeze(1).transpose(2, 3)  # Shape: (batch_size, 1, time_steps, n_mfcc)
-
-            # Extract chroma features using librosa's chroma_stft function
-            input_np = input.cpu().numpy()  # Convert to NumPy for librosa
-            chroma_features = []
-            for i in range(input_np.shape[0]):  # Loop over batch
-                chroma = librosa.feature.chroma_stft(y=input_np[i], sr=self.sample_rate, n_fft=self.window_size, 
-                                                    hop_length=self.hop_size, win_length=self.window_size, 
-                                                    window='hann', n_chroma=self.mel_bins, tuning=0)
-                chroma_features.append(chroma)
-            chroma_features = np.stack(chroma_features, axis=0)  # Shape: (batch_size, n_chroma, time_steps)
-            x2 = torch.tensor(chroma_features, dtype=torch.float32, device=input.device)  # Convert back to tensor
-            x2 = x2.unsqueeze(1).transpose(2, 3)  # Shape: (batch_size, 1, time_steps, n_chroma)
-
-            # Extract LogMel features
-            x3 = self.spectrogram_extractor(input)   # (batch_size, 1, time_steps, freq_bins)
-            x3 = self.logmel_extractor(x3)  # (batch_size, 1, time_steps, mel_bins)
-
-            x = torch.cat((x1, x2, x3), dim=3) 
-
-            # Pass the precomputed features (MFCC or LogMel) into the base model conv blocks
-            x = x.transpose(1, 3)  # Align dimensions for the base model
-            x = self.bn0_ens(x)   # Apply the batch normalization from base
-            x = x.transpose(1, 3)
-
-            if self.training:
-                x = self.base.spec_augmenter(x)
-
-        elif self.frontend == 'mixup':
-            x = self.spectrogram_extractor(input)  # (batch, time_steps, freq_bins)
-            x = self.logmel_extractor(x)  # (batch, time_steps, mel_bins)
-
-            # Pass the precomputed features (MFCC or LogMel) into the base model conv blocks
-            x = x.transpose(1, 3)  # Align dimensions for the base model
-            x = self.base.bn0(x)   # Apply the batch normalization from base
-            x = x.transpose(1, 3)
-
+        elif self.args.spec_aug == 'mixup':
             if self.training:
                 bs = x.size(0)
                 rn_indices, lam = mixup(bs, 0.4)
@@ -275,114 +175,15 @@ class PANNS_CNN6(nn.Module):
                 x = x * lam.reshape(bs, 1, 1, 1) + \
                     x[rn_indices] * (1. - lam.reshape(bs, 1, 1, 1))
 
+        # else:
+        #     output_dict = self.base(input, mixup_lambda)
+        #     embedding = output_dict['embedding']
+        #     clipwise_output = self.fc_transfer(embedding)
 
-            if self.training:
-                x = self.base.spec_augmenter(x)
-
-        elif self.frontend == 'leaf':
-            x = self.leaf_extractor(input.unsqueeze(1))
-            x = x.transpose(1, 2)
-            x = x.unsqueeze(1)
-
-            if self.training:
-                x = self.base.spec_augmenter(x)
-
-        elif self.frontend == 'diffres':
-            x = self.spectrogram_extractor(input)  # (batch, time_steps, freq_bins)
-            x = self.logmel_extractor(x)  # (batch, time_steps, mel_bins)
-
-            # Pass the precomputed features (MFCC or LogMel) into the base model conv blocks
-            x = x.transpose(1, 3)  # Align dimensions for the base model
-            x = self.base.bn0(x)   # Apply the batch normalization from base
-            x = x.transpose(1, 3)
-
-            # if self.training:
-            #     x = self.base.spec_augmenter(x)
-
-            x = x.squeeze(1)
-            ret = self.diffres_extractor(x)
-
-            # Access the outputs
-            guide_loss = ret["guide_loss"]
-            x = ret["features"].unsqueeze(1)
-
-        elif self.frontend == 'nafa':
-            x = self.spectrogram_extractor(input)  # (batch, time_steps, freq_bins)
-            x = self.logmel_extractor(x)  # (batch, time_steps, mel_bins)
-
-            # Pass the precomputed features (MFCC or LogMel) into the base model conv blocks
-            x = x.transpose(1, 3)  # Align dimensions for the base model
-            x = self.base.bn0(x)   # Apply the batch normalization from base
-            x = x.transpose(1, 3)
-
-            # if self.training:
-            #     x = self.base.spec_augmenter(x)
-
-            x = x.squeeze(1)
-            ret = self.nafa_extractor(x)
-
-            # Access the outputs
-            aux_loss = ret["total_loss"]
-            x = ret["features"].unsqueeze(1)
-
-        elif self.frontend == 'dmel':
-            x = self.dmel_extractor(input) 
-            x = x.transpose(1, 2)
-            x = x.unsqueeze(1)
-
-            x = self.logmel_extractor(x)  # (batch, time_steps, mel_bins)
-
-            # Pass the precomputed features (MFCC or LogMel) into the base model conv blocks
-            x = x.transpose(1, 3)  # Align dimensions for the base model
-            x = self.base.bn0(x)   # Apply the batch normalization from base
-            x = x.transpose(1, 3)
-
-            if self.training:
-                x = self.base.spec_augmenter(x)
-
-        elif self.frontend == 'dstft':
-            x, _ = self.dstft_extractor(input)
-            x = x.transpose(1, 2)
-            x = x.unsqueeze(1)
-
-            x = self.logmel_extractor(x)  # (batch, time_steps, mel_bins)
-
-            # Pass the precomputed features (MFCC or LogMel) into the base model conv blocks
-            x = x.transpose(1, 3)  # Align dimensions for the base model
-            x = self.base.bn0(x)   # Apply the batch normalization from base
-            x = x.transpose(1, 3)
-
-            if self.training:
-                x = self.base.spec_augmenter(x)
-
-        elif self.frontend == 'sincnet':
-            x = self.sincnet_extractor(input.unsqueeze(1)) 
-            x = x.transpose(1, 2)
-            x = x.unsqueeze(1)
-
-            # Pass the precomputed features (MFCC or LogMel) into the base model conv blocks
-            x = x.transpose(1, 3)  # Align dimensions for the base model
-            x = self.base.bn0(x)   # Apply the batch normalization from base
-            x = x.transpose(1, 3)
-
-            if self.training:
-                x = self.base.spec_augmenter(x)
-
-        else:
-            output_dict = self.base(input, mixup_lambda)
-            embedding = output_dict['embedding']
-            clipwise_output = self.fc_transfer(embedding)
-
-            return output_dict
+        #     return output_dict
 
         # import ipdb; ipdb.set_trace() 
         # print(x.shape)
-        # has_nan = torch.isnan(x).any()
-        # print("Contains NaN:", has_nan.item())
-
-        # Mixup on spectrogram
-        if self.training and mixup_lambda is not None:
-            x = do_mixup(x, mixup_lambda)
 
         x = self.base.conv_block1(x, pool_size=(2, 2), pool_type='avg')
         x = F.dropout(x, p=0.2, training=self.training)
@@ -402,12 +203,10 @@ class PANNS_CNN6(nn.Module):
         embedding = F.dropout(x, p=0.5, training=self.training)
         clipwise_output = self.fc_transfer(embedding)
 
-        if self.training and self.frontend == 'mixup':
+        if self.training and self.args.spec_aug == 'mixup':
             output_dict = {'rn_indices':rn_indices, 'mixup_lambda': lam, 'clipwise_output': clipwise_output, 'embedding': embedding}
-        elif self.training and self.frontend == 'diffres':
+        elif self.training and self.args.spec_aug == 'diffres':
             output_dict = {'clipwise_output': clipwise_output, 'embedding': embedding, 'diffres_loss': guide_loss}
-        elif self.training and self.frontend == 'ours':
-            output_dict = {'clipwise_output': clipwise_output, 'embedding': embedding, 'aux_loss': aux_loss}
         else:
             output_dict = {'clipwise_output': clipwise_output, 'embedding': embedding}
         return output_dict

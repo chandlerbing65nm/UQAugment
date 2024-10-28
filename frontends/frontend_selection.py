@@ -8,7 +8,11 @@ def process_outputs(model, args, inputs, targets, criterion):
     # Determine output structure based on model type
     if any(keyword in args.model_name for keyword in ('panns', 'ast')):
         output_dict = model(inputs)
-        outputs = output_dict.get('clipwise_output', None) or output_dict
+        # Check if 'clipwise_output' is in output_dict and non-None
+        if 'clipwise_output' in output_dict and output_dict['clipwise_output'] is not None:
+            outputs = output_dict['clipwise_output']
+        else:
+            outputs = output_dict
     else:
         outputs = model(inputs)
     
@@ -27,12 +31,11 @@ def process_outputs(model, args, inputs, targets, criterion):
                             F.cross_entropy(outputs, labels[rn_indices], reduction="none") * (1. - mixup_lambda.reshape(bs)))
             loss = samples_loss.mean() + loss  # Add mixup loss to base loss
 
-    # Apply additional frontend-specific loss if defined
-    if hasattr(args, 'frontend'):
-        if args.frontend == 'diffres':
-            diffres_loss = output_dict.get('diffres_loss')
-            if diffres_loss is not None:
-                loss += diffres_loss
+    elif hasattr(args, 'spec_aug') and args.spec_aug == 'diffres':
+        diffres_loss = output_dict.get('diffres_loss')
+        if diffres_loss is not None:
+            # Add diffres_loss directly as a scalar
+            loss += diffres_loss.squeeze()  # Ensure diffres_loss is a scalar
 
     return loss, outputs
 

@@ -165,7 +165,7 @@ class PANNS_CNN6(nn.Module):
 
         elif self.args.spec_aug == 'specaugment':
             if self.training:
-                x = self.spec_augmenter(x)
+                x = self.specaugment(x)
 
         elif self.args.spec_aug == 'mixup':
             if self.training:

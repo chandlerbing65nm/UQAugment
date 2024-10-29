@@ -21,6 +21,8 @@ import torch.utils.data
 import torchaudio
 import librosa
 
+from methods.ast.utils import mixup
+
 from frontends.leaf.frontend import Leaf
 from frontends.diffres.frontend import DiffRes
 from frontends.dmel.frontend import DMel
@@ -55,7 +57,7 @@ class AudioSpectrogramTransformer(nn.Module):
                  fmax, num_classes, frontend='dstft', batch_size=200,
                  freeze_base=False, device=None,
                  imagenet_pretrain=True, audioset_pretrain=False, model_size='base384',
-                 verbose=True):
+                 verbose=True, args=None):
         """
         Classifier using ASTModel as the backbone with selectable frontend feature extractors.
         
@@ -94,6 +96,7 @@ class AudioSpectrogramTransformer(nn.Module):
         self.mel_bins = mel_bins
         self.fmin = fmin
         self.fmax = fmax
+        self.args = args
 
         # Initialize frontends
         self.spectrogram_extractor = Spectrogram(n_fft=window_size, hop_length=hop_size, 
@@ -105,85 +108,28 @@ class AudioSpectrogramTransformer(nn.Module):
                                                  amin=amin, top_db=top_db, freeze_parameters=True)
 
         # Spec augmenter
-        self.spec_augmenter = SpecAugmentation(time_drop_width=64, time_stripes_num=2, 
+        self.specaugment = SpecAugmentation(time_drop_width=64, time_stripes_num=2, 
                                                freq_drop_width=8, freq_stripes_num=2)
 
-        self.mfcc_extractor = torchaudio.transforms.MFCC(
-            sample_rate=sample_rate,
-            n_mfcc=mel_bins,  # Number of MFCC coefficients
-            melkwargs={
-                "n_fft": window_size,
-                "n_mels": mel_bins,
-                "hop_length": hop_size,
-                "f_min": fmin,
-                "f_max": fmax,
-                "center": center,
-                "pad_mode": pad_mode
-            }
-        )
 
-        self.leaf_extractor = Leaf(
-            n_filters=40,
-            sample_rate=sample_rate,
-            window_len=16,
-            window_stride=8,
-            init_min_freq=50.0,
-            init_max_freq=sample_rate // 2,
-        )
 
-        self.diffres_extractor = DiffRes(
+        self.diffres = DiffRes(
             in_t_dim=int((sample_rate / hop_size) * 2) + 1,  # Adjust based on input dimensions
             in_f_dim=mel_bins,
             dimension_reduction_rate=0.60,
             learn_pos_emb=False
         )
 
-        self.nafa_extractor = NAFA(
+        self.nafa = NAFA(
             in_t_dim=int((sample_rate / hop_size) * 2) + 1,  # Adjust based on input dimensions
             in_f_dim=mel_bins,
         )
 
 
-        self.dmel_extractor = DMel(
-            init_lambd=5.0, 
-            n_fft=window_size, 
-            win_length=window_size, 
-            hop_length=hop_size
-        )
-
-        self.dstft_extractor = DSTFT(
-            x=torch.randn(batch_size, sample_rate*2).to(self.device),
-            win_length=window_size,
-            support=window_size,
-            stride=hop_size,
-            pow=2,
-            win_pow=2,
-            win_requires_grad=True,
-            stride_requires_grad=True,
-            pow_requires_grad=False,    
-            win_p="t",
-            win_min=window_size//2,              
-            win_max=window_size,            
-            stride_min=hop_size//2,          
-            stride_max=hop_size,           
-            sr=sample_rate,
-        )
-
-        self.sincnet_extractor = SincNet(
-            out_channels=mel_bins, 
-            sample_rate=sample_rate, 
-            kernel_size=hop_size, 
-            window_size=window_size, 
-            hop_size=hop_size, 
-        )
-
         # Initialize ASTModel backbone
-        if self.frontend == 'diffres':
+        if self.args.spec_aug == 'diffres':
             ast_fdim = mel_bins
             ast_tdim = int((int((sample_rate / hop_size) * 2) + 1) * (1 - 0.60))
-        elif self.frontend == 'leaf':
-            ast_fdim = 40
-            ast_tdim = int((sample_rate / hop_size) * 2)
         else:
             ast_fdim = mel_bins
             ast_tdim = int((sample_rate / hop_size) * 2) + 1
@@ -218,116 +164,52 @@ class AudioSpectrogramTransformer(nn.Module):
         :return: Dictionary with outputs
         """
 
-        if self.frontend == 'leaf':
-            x = self.leaf_extractor(input.unsqueeze(1))  # (batch_size, channels, time_steps, freq_bins)
-            x = x.transpose(1, 2)
-            x = x.unsqueeze(1)
+        x = self.spectrogram_extractor(input)  # (batch, time_steps, freq_bins)
+        x = self.logmel_extractor(x)  # (batch, time_steps, mel_bins)
 
-            if self.training:
-                x = self.spec_augmenter(x)
+        # Pass the precomputed features (MFCC or LogMel) into the base model conv blocks
+        x = x.transpose(1, 3)  # Align dimensions for the base model
+        x = self.bn(x)   # Apply the batch normalization from base
+        x = x.transpose(1, 3)
 
-        elif self.frontend == 'diffres':
-            x = self.spectrogram_extractor(input)  # (batch_size, 1, time_steps, freq_bins)
-            x = self.logmel_extractor(x)          # (batch_size, 1, time_steps, mel_bins)
 
-            x = x.transpose(1, 3)  # Align dimensions for the base model
-            x = self.bn(x)   # Apply the batch normalization from base
-            x = x.transpose(1, 3)
-
-            # if self.training:
-            #     x = self.spec_augmenter(x)
-
-            x = x.squeeze(1)                      # (batch_size, time_steps, mel_bins)
-            ret = self.diffres_extractor(x)
+        if self.args.spec_aug == 'diffres':
+            x = x.squeeze(1)
+            ret = self.diffres(x)
             guide_loss = ret["guide_loss"]
             x = ret["features"]
 
-        elif self.frontend == 'nafa':
-            x = self.spectrogram_extractor(input)  # (batch, time_steps, freq_bins)
-            x = self.logmel_extractor(x)  # (batch, time_steps, mel_bins)
-
-            # Pass the precomputed features (MFCC or LogMel) into the base model conv blocks
-            x = x.transpose(1, 3)  # Align dimensions for the base model
-            x = self.bn(x)  # Apply the batch normalization from base
-            x = x.transpose(1, 3)
-
-            # if self.training:
-            #     x = x = self.spec_augmenter(x)
-
+        elif self.args.spec_aug == 'nafa':
             x = x.squeeze(1)
-            ret = self.nafa_extractor(x)
+            x = self.nafa(x)
+            x = x
 
-            # Access the outputs
-            aux_loss = ret["total_loss"]
-            x = ret["features"].unsqueeze(1)
-
-        elif self.frontend == 'dmel':
-            x = self.dmel_extractor(input) 
-            x = x.transpose(1, 2)
-            x = x.unsqueeze(1)
-            x = self.logmel_extractor(x)  # (batch_size, 1, time_steps, mel_bins)
-
-            x = x.transpose(1, 3)  # Align dimensions for the base model
-            x = self.bn(x)   # Apply the batch normalization from base
-            x = x.transpose(1, 3)
-
+        elif self.args.spec_aug == 'specaugment':
             if self.training:
-                x = self.spec_augmenter(x)
+                x = self.specaugment(x)
+            x = x.squeeze(1)
 
-        elif self.frontend == 'dstft':
-            x, _ = self.dstft_extractor(input)
-            x = x.transpose(1, 2)
-            x = x.unsqueeze(1)
-            x = self.logmel_extractor(x)  # (batch_size, 1, time_steps, mel_bins)
-
-            x = x.transpose(1, 3)  # Align dimensions for the base model
-            x = self.bn(x)   # Apply the batch normalization from base
-            x = x.transpose(1, 3)
-
+        elif self.args.spec_aug == 'mixup':
             if self.training:
-                x = self.spec_augmenter(x)
+                bs = x.size(0)
+                rn_indices, lam = mixup(bs, 0.4)
+                lam = lam.to(x.device)
+                x = x * lam.reshape(bs, 1, 1, 1) + \
+                    x[rn_indices] * (1. - lam.reshape(bs, 1, 1, 1))
+            x = x.squeeze(1)
 
-        elif self.frontend == 'sincnet':
-            x = self.sincnet_extractor(input.unsqueeze(1)) 
-            x = x.transpose(1, 2)
-            x = x.unsqueeze(1)
-
-            x = x.transpose(1, 3)  # Align dimensions for the base model
-            x = self.bn(x)   # Apply the batch normalization from base
-            x = x.transpose(1, 3)
-
-            if self.training:
-                x = self.spec_augmenter(x)
-
-        else: # for log-mel spectrogram
-            x = self.spectrogram_extractor(input)  # (batch, 1, time_steps, freq_bins)
-            x = self.logmel_extractor(x)  # (batch, 1, time_steps, mel_bins)
-            x = x.transpose(1, 3)  # Align dimensions for the base model
-            x = self.bn(x)   # Apply the batch normalization from base
-            x = x.transpose(1, 3)
-
-            if self.training:
-                x = self.spec_augmenter(x)
-
-        # Pass the preprocessed features to the ASTModel backbone
-        if self.frontend not in ['diffres']:
-            x = x.squeeze(1)  # (batch_size, time_steps, mel_bins)
-
-        # import ipdb; ipdb.set_trace() 
-        # print(x.shape)
-        # has_nan = torch.isnan(x).any()
-        # print("Contains NaN:", has_nan.item())
         
         # Get logits from ASTModel
         logits = self.backbone(x)  # Shape: (batch_size, num_classes)
 
-        # If using 'diffres', include guide_loss
-        if self.training and self.frontend == 'diffres':
-            return {'clipwise_output': logits, 'diffres_loss': guide_loss}
-        elif self.training and self.frontend == 'ours':
-            return {'clipwise_output': logits, 'aux_loss': aux_loss}
+        if self.training and self.args.spec_aug == 'mixup':
+            output_dict = {'rn_indices':rn_indices, 'mixup_lambda': lam, 'clipwise_output': logits}
+        elif self.training and self.args.spec_aug == 'diffres':
+            output_dict = {'clipwise_output': logits, 'diffres_loss': guide_loss}
         else:
-            return {'clipwise_output': logits}
+            output_dict = {'clipwise_output': logits}
+        return output_dict
+
 
 if __name__ == '__main__':
     # Example usage and testing

@@ -78,20 +78,21 @@ class PANNS_CNN6(nn.Module):
                                                freq_drop_width=8, freq_stripes_num=2)
 
         self.diffres = DiffRes(
-            in_t_dim=251,
+            in_t_dim=int(int((sample_rate / hop_size) * 2) + 1),
             in_f_dim=mel_bins,
             dimension_reduction_rate=0.60,
             learn_pos_emb=False
         )
 
         self.nafa = NAFA(
-            in_t_dim=251,
+            in_t_dim=int(int((sample_rate / hop_size) * 2) + 1),
             in_f_dim=mel_bins,
         )
 
         # Transfer to another task layer
         self.fc_transfer = nn.Linear(512, num_classes, bias=True)  # Assuming 512 is embedding size
         
+        self.bn = nn.BatchNorm2d(mel_bins)
         if freeze_base:
             # Freeze AudioSet pretrained layers
             for param in self.base.parameters():
@@ -149,7 +150,7 @@ class PANNS_CNN6(nn.Module):
 
         # Pass the precomputed features (MFCC or LogMel) into the base model conv blocks
         x = x.transpose(1, 3)  # Align dimensions for the base model
-        x = self.base.bn0(x)   # Apply the batch normalization from base
+        x = self.bn(x)   # Apply the batch normalization from base
         x = x.transpose(1, 3)
 
         if self.args.spec_aug == 'diffres':

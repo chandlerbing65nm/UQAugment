@@ -11,46 +11,12 @@ import torchaudio
 import pickle
 
 
-def save_pickle(obj, fname):
-    # print("Save pickle at " + fname)
-    with open(fname, "wb") as f:
-        pickle.dump(obj, f)
-
-
-def load_pickle(fname):
-    # print("Load pickle at " + fname)
-    with open(fname, "rb") as f:
-        res = pickle.load(f)
-    return res
-
 
 def load_audio(path, sr=None):
     y, _ = librosa.load(path, sr=None)
     y = resample(y, num=sr*2)
     return y
 
- 
-def load_noise(path):
-    y, sample = librosa.load(path, sr=64000)
-    dur1 = librosa.get_duration(y, sample)
-    if dur1 > 2:
-        n_samples = int(2 * sample)
-        audio = y[:n_samples]
-    elif dur1 < 2:
-        duration = 2
-        samples_need = int(sample*duration)
-        samples_to_pad = max(samples_need - len(y), 0)
-        padded_signal = np.pad(y, (0, samples_to_pad), 'constant', constant_values=0)
-        audio = padded_signal
-    else:
-        audio= y
-
-    return audio
-
-def get_noisename():
-    path = '/mnt/fast/nobackup/users/mc02229/noise/vd_noise'
-    wav_dir = os.path.join(path, '*.wav')
-    return glob.glob(wav_dir)
 
 def get_wav_name(split='strong', data_path='./'):
     """
@@ -66,8 +32,6 @@ def get_wav_name(split='strong', data_path='./'):
             wav_dir = os.path.join(path, dir, dir1, split, '*.wav')
             audio.append(glob.glob(wav_dir))
     return list(chain.from_iterable(audio))
-
-
 
 
 def data_generator(seed, test_sample_per_class, data_path='./'):
@@ -151,7 +115,7 @@ def data_generator(seed, test_sample_per_class, data_path='./'):
 
 
 class Fish_Voice_Dataset(Dataset):
-    def __init__(self, sample_rate, seed, split='train', data_path='./'):
+    def __init__(self, sample_rate, seed, class_num, split='train', data_path='./', transform=None):
         """
         split: train or test
         if sample_rate=None, read audio with the default sr
@@ -159,9 +123,11 @@ class Fish_Voice_Dataset(Dataset):
         self.seed = seed
         self.split = split
         self.data_path = data_path
+        self.transform = transform
+        self.class_num = class_num
 
         train_dict, test_dict, val_dict = data_generator(self.seed, test_sample_per_class=700, data_path=self.data_path)
-
+        
         if self.split == 'train':
             self.data_dict = train_dict
         elif self.split == 'test':
@@ -169,22 +135,35 @@ class Fish_Voice_Dataset(Dataset):
         elif self.split == 'val':
             self.data_dict = val_dict
         self.sample_rate = sample_rate
-
+    
     def __len__(self):
+
 
         return len(self.data_dict)
     
     def __getitem__(self, index):
-
         wav_name, target = self.data_dict[index]
         wav = load_audio(wav_name, sr=self.sample_rate)
+
+        # wav, _ = torchaudio.load(wav_name, normalize=True)
+
         wav = np.array(wav)
+
+        if self.transform is not None:
+            wav = self.transform(samples=wav, sample_rate=2*self.sample_rate)
+            # wav = self.transform(wav)
+            # wav = self.transform(wav, sampling_rate=self.sample_rate, return_tensors="pt").input_values.squeeze(0)
+
+        # import ipdb; ipdb.set_trace() 
+        # print(wav.shape)
+
         # change 'eye(num)' if using different class nums
-        target = np.eye(4)[target]
+        target = np.eye(self.class_num)[target]
 
         data_dict = {'audio_name': wav_name, 'waveform': wav, 'target': target}
 
         return data_dict
+
 
 
 def collate_fn(batch):
@@ -205,10 +184,12 @@ def get_dataloader(split,
                    shuffle=False,
                    drop_last=False,
                    num_workers=4,
+                   class_num=4,
                    data_path='./',
-                   sampler=None):
+                   sampler=None,
+                   transform=None):
 
-    dataset = Fish_Voice_Dataset(split=split, sample_rate=sample_rate, seed=seed, data_path=data_path)
+    dataset = Fish_Voice_Dataset(split=split, sample_rate=sample_rate, seed=seed, class_num=class_num, data_path=data_path, transform=transform)
 
     dataloader = DataLoader(dataset=dataset, batch_size=batch_size,
                       shuffle=shuffle, drop_last=drop_last,
@@ -218,14 +199,23 @@ def get_dataloader(split,
 
 
 if __name__ == '__main__':
-    train_loader = get_dataloader(split='train', batch_size=1, sample_rate=64000, seed=25)
-    from tqdm import tqdm
-    for item in tqdm(train_loader):
-        print(item['audio_name'])
-        print(item['waveform'].shape)
-        print(item['target'].shape)
-        break
+    dataset, dataloader = get_dataloader(
+        split='train', 
+        batch_size=2, 
+        sample_rate=64000, 
+        shuffle=True, 
+        seed=20, 
+        drop_last=True, 
+        data_path='/scratch/project_465001389/chandler_scratch/Datasets/uffia'
+        )
+    
+    for i, batch in enumerate(dataloader):
+        audio_names = batch['audio_name'][0]  # Access the list of file names combined into one sample
+        waveforms = batch['waveform'][0]  # Access the corresponding waveform
+       
+        print(f"Shape: {waveforms.shape}")
+        print("")
 
-    # noise_name = get_noisename()
-    # print(noise_name)
-    # print(len(noise_name))
+        # For testing, we break after a few samples to avoid too much output
+        if i >= 4:
+            break

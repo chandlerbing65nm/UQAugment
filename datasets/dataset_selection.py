@@ -2,6 +2,7 @@
 
 from .affia3k import get_dataloader as affia3k_loader
 from .uffia import get_dataloader as uffia_loader
+from .watkins import get_dataloader as watkins_loader
 
 def get_dataloaders(args, transform):
     """
@@ -61,6 +62,27 @@ def get_dataloaders(args, transform):
             drop_last=False,
             data_path=args.data_path,
             transform=None
+        )
+    elif args.dataset == 'watkins':
+        train_dataset, train_loader = watkins_loader(
+            split='train',
+            batch_size=args.batch_size,
+            sample_rate=args.sample_rate,
+            shuffle=True,
+            seed=args.seed,
+            drop_last=True,
+            data_path=args.data_path,
+            transform=transform
+        )
+        val_dataset, val_loader = watkins_loader(
+            split='test',
+            batch_size=args.batch_size,
+            sample_rate=args.sample_rate,
+            shuffle=False,
+            seed=args.seed,
+            drop_last=False,
+            data_path=args.data_path,
+            transform=transform  # Typically, no augmentation for validation
         )
     else:
         raise ValueError(f"Unsupported dataset: {args.dataset}")

@@ -4,10 +4,10 @@ import torch.nn.functional as F
 import os
 import matplotlib.pyplot as plt
 
-from frontends.diffres.pydiffres.core import Base
-from frontends.diffres.pydiffres.dilated_convolutions_1d.conv import DilatedConv, DilatedConv_Out_128
+from specaug.diffres.pydiffres.core import Base
+from specaug.diffres.pydiffres.dilated_convolutions_1d.conv import DilatedConv, DilatedConv_Out_128
 
-from frontends.diffres.pydiffres.pooling import Pooling_layer
+from specaug.diffres.pydiffres.pooling import Pooling_layer
 
 EPS = 1e-12
 RESCALE_INTERVEL_MIN = 1e-4

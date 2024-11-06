@@ -2,13 +2,13 @@ import os
 import torch
 import torch.nn as nn
 # from pydiffres import DiffRes as pydiffres
-from frontends.nafa.modules.nafa import NAFA as NeuralAdaptiveFrameAlignment
+from specaug.fma.modules.nafa import FMA as FrameMixup
 
 
-class NAFA(nn.Module):
+class FMA(nn.Module):
     def __init__(self, in_t_dim, in_f_dim):
-        super(NAFA, self).__init__()
-        self.model = NeuralAdaptiveFrameAlignment(
+        super(FMA, self).__init__()
+        self.model = FrameMixup(
             in_t_dim=in_t_dim,
             in_f_dim=in_f_dim,
         )

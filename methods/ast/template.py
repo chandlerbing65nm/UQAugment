@@ -23,12 +23,8 @@ import librosa
 
 from methods.ast.utils import mixup
 
-from frontends.leaf.frontend import Leaf
-from frontends.diffres.frontend import DiffRes
-from frontends.dmel.frontend import DMel
-from frontends.dstft.frontend import DSTFT
-from frontends.sincnet.frontend import SincNet
-from frontends.nafa.frontend import NAFA
+from specaug.diffres.frontend import DiffRes
+from specaug.fma.frontend import FMA
 
 from torchlibrosa.stft import Spectrogram, LogmelFilterBank
 from torchlibrosa.augmentation import SpecAugmentation
@@ -120,7 +116,7 @@ class AudioSpectrogramTransformer(nn.Module):
             learn_pos_emb=False
         )
 
-        self.nafa = NAFA(
+        self.fma = FMA(
             in_t_dim=int((sample_rate / hop_size) * 2) + 1,  # Adjust based on input dimensions
             in_f_dim=mel_bins,
         )
@@ -179,9 +175,9 @@ class AudioSpectrogramTransformer(nn.Module):
             guide_loss = ret["guide_loss"]
             x = ret["features"]
 
-        elif self.args.spec_aug == 'nafa':
+        elif self.args.spec_aug == 'fma':
             x = x.squeeze(1)
-            x = self.nafa(x)
+            x = self.fma(x)
             x = x
 
         elif self.args.spec_aug == 'specaugment':

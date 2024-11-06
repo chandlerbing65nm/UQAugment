@@ -22,12 +22,9 @@ import librosa
 
 from methods.panns.pytorch_utils import *
 from methods.panns.models import *
-from frontends.leaf.frontend import Leaf
-from frontends.dmel.frontend import DMel
-from frontends.dstft.frontend import DSTFT
-from frontends.sincnet.frontend import SincNet
-from frontends.diffres.frontend import DiffRes
-from frontends.nafa.frontend import NAFA
+
+from specaug.diffres.frontend import DiffRes
+from specaug.fma.frontend import FMA
 
 from torchlibrosa.stft import Spectrogram, LogmelFilterBank
 from torchlibrosa.augmentation import SpecAugmentation
@@ -84,7 +81,7 @@ class PANNS_CNN6(nn.Module):
             learn_pos_emb=False
         )
 
-        self.nafa = NAFA(
+        self.fma = FMA(
             in_t_dim=int(int((sample_rate / hop_size) * 2) + 1),
             in_f_dim=mel_bins,
         )
@@ -159,9 +156,9 @@ class PANNS_CNN6(nn.Module):
             guide_loss = ret["guide_loss"]
             x = ret["features"].unsqueeze(1)
 
-        elif self.args.spec_aug == 'nafa':
+        elif self.args.spec_aug == 'fma':
             x = x.squeeze(1)
-            x = self.nafa(x)
+            x = self.fma(x)
             x = x.unsqueeze(1)
 
         elif self.args.spec_aug == 'specaugment':

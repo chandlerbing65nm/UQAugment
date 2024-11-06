@@ -11,7 +11,7 @@ from config.config import parse_args
 from methods.model_selection import get_model
 from transforms.audio_transforms import get_transforms
 from losses.loss_selection import get_loss_function
-from frontends.frontend_selection import process_outputs
+from specaug.specaug_selection import process_outputs
 from loggers.wandb_init import initialize_wandb
 from loggers.metrics_logging import log_metrics
 from loggers.ckpt_saving import save_checkpoint

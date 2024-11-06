@@ -2,7 +2,7 @@ import os
 import torch
 import torch.nn as nn
 # from pydiffres import DiffRes as pydiffres
-from frontends.diffres.pydiffres.diffres import DiffRes as pydiffres
+from specaug.diffres.pydiffres.diffres import DiffRes as pydiffres
 
 
 class DiffRes(nn.Module):

@@ -10,7 +10,7 @@
 #SBATCH --partition=standard-g            
 #SBATCH --time=24:00:00           
 #SBATCH --account=project_465001389
-#SBATCH --output=/users/doloriel/work/slurm/uffia/cnn6-mixup2-lumi.out
+#SBATCH --output=/users/doloriel/work/slurm/uffia/ast-specaugment2-lumi.out
 
 # Load necessary modules (if required)
 conda init
@@ -35,7 +35,7 @@ python train.py \
     --window_size 2048 \
     --hop_size 1024 \
     --mel_bins 64 \
-    --model_name "panns_cnn6" \
-    --spec_aug "mixup" \
+    --model_name "ast" \
+    --spec_aug "specaugment" \
     --fmin 1 \
     --fmax 128000 \

@@ -2,7 +2,7 @@ import os
 import torch
 import torch.nn as nn
 # from pydiffres import DiffRes as pydiffres
-from specaug.fma.modules.nafa import FMA as FrameMixup
+from specaug.fma.modules.fma import FMA as FrameMixup
 
 
 class FMA(nn.Module):

@@ -15,7 +15,6 @@ class FrameMixup(nn.Module):
         feat_dim, 
         temperature=0.2, 
         frame_reduction_ratio=None, 
-        frame_augmentation_ratio=1.0,  # Ratio of frames to augment
         device='cuda'
         ):
         super(FrameMixup, self).__init__()
@@ -26,17 +25,17 @@ class FrameMixup(nn.Module):
             self.reduced_len = max(1, int(seq_len * (1 - frame_reduction_ratio)))
         else:
             self.reduced_len = self.seq_len
-        assert 0 <= frame_augmentation_ratio <= 1, "frame_augmentation_ratio must be between 0 and 1"
-        self.num_augmented_frames = max(1, int(self.reduced_len * frame_augmentation_ratio))
+
         self.noise_template = torch.randn(1, self.reduced_len, seq_len).to(device=device)  # [1, reduced_len, seq_len]
         self.temperature = temperature
 
     def forward(self, feature):
+        feature = feature.to(self.noise_template.device)  
+        
         batch_size, seq_len, feat_dim = feature.size()  # feature: [batch_size, seq_len, feat_dim]
         noise_template = self.noise_template.expand(batch_size, -1, -1)  # [batch_size, reduced_len, seq_len]
         augmenting_path = self.compute_augmenting_path(noise_template)  # [batch_size, reduced_len, seq_len]
-        if self.num_augmented_frames < self.reduced_len:
-            augmenting_path = self.randomly_apply_augmentation(augmenting_path)  # [batch_size, reduced_len, seq_len]
+
         augmented_feature = self.apply_augmenting(feature, augmenting_path)  # [batch_size, reduced_len, feat_dim]
         return augmented_feature  # [batch_size, reduced_len, feat_dim]
 
@@ -45,23 +44,13 @@ class FrameMixup(nn.Module):
         gaussian_noise = torch.normal(mu, sigma, size=noise_template.size(), device=noise_template.device)  # [batch_size, reduced_len, seq_len]
         return F.softmax(gaussian_noise / self.temperature, dim=-1)  # [batch_size, reduced_len, seq_len]
 
-    def randomly_apply_augmentation(self, augmenting_path):
-        batch_size, reduced_len, seq_len = augmenting_path.size()
-        mask = torch.zeros(batch_size, reduced_len, 1, device=augmenting_path.device)  # [batch_size, reduced_len, 1]
-        start_index = torch.randint(0, reduced_len - self.num_augmented_frames + 1, (1,)).item()
-        mask[:, start_index:start_index + self.num_augmented_frames, :] = 1  # mask with ones in selected frames
-        augmenting_path = augmenting_path * mask  # [batch_size, reduced_len, seq_len]
-        return augmenting_path  # [batch_size, reduced_len, seq_len]
-
     def apply_augmenting(self, feature, augmenting_path):
-        # Ensure feature is on the same device as augmenting_path
-        feature = feature.to(augmenting_path.device)
         augmented_feature = torch.einsum('bij,bjf->bif', augmenting_path, feature)  # [batch_size, reduced_len, feat_dim]
         return augmented_feature  # [batch_size, reduced_len, feat_dim]
 
 
 
-class NAFA(nn.Module):
+class FMA(nn.Module):
     def __init__(self, in_t_dim, in_f_dim):
         super().__init__()
         self.input_seq_length = in_t_dim
@@ -72,7 +61,6 @@ class NAFA(nn.Module):
             feat_dim=self.input_f_dim,
             temperature=0.2, 
             frame_reduction_ratio=None,
-            frame_augmentation_ratio=1.0,
             device='cuda'
         )
 
@@ -88,7 +76,7 @@ import torch
 import matplotlib.pyplot as plt
 import numpy as np
 from datasets.dataset_selection import get_dataloaders
-from frontends.nafa.modules.debug import FrameMixup, NAFA  # Replace with your actual module paths if necessary
+
 from config.config import parse_args
 from transforms.audio_transforms import get_transforms
 from torchlibrosa.stft import Spectrogram, LogmelFilterBank
@@ -176,7 +164,7 @@ if __name__ == "__main__":
     batch_size, seq_len, feat_dim = x.size()
 
     # Initialize the NAFA model with appropriate dimensions
-    nafa_model = NAFA(in_t_dim=seq_len, in_f_dim=feat_dim)
+    nafa_model = FMA(in_t_dim=seq_len, in_f_dim=feat_dim)
     nafa_model.eval()  # Set the model to evaluation mode
 
     # Select a random sample from the batch

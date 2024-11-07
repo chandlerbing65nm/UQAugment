@@ -25,6 +25,7 @@ from methods.panns.models import *
 
 from specaug.diffres.frontend import DiffRes
 from specaug.fma.frontend import FMA
+from specaug.specmix.frontend import SpecMix
 
 from torchlibrosa.stft import Spectrogram, LogmelFilterBank
 from torchlibrosa.augmentation import SpecAugmentation
@@ -79,6 +80,14 @@ class PANNS_CNN6(nn.Module):
             in_f_dim=mel_bins,
             dimension_reduction_rate=0.60,
             learn_pos_emb=False
+        )
+
+        self.specmix = SpecMix(
+            prob = 0.5,
+            min_band_size = mel_bins // 8,
+            max_band_size = mel_bins // 2,
+            max_frequency_bands = 2,
+            max_time_bands = 2,
         )
 
         self.fma = FMA(
@@ -173,6 +182,10 @@ class PANNS_CNN6(nn.Module):
                 x = x * lam.reshape(bs, 1, 1, 1) + \
                     x[rn_indices] * (1. - lam.reshape(bs, 1, 1, 1))
 
+        elif self.args.spec_aug == 'specmix':
+            if self.training:
+                x, rn_indices, lam = self.specmix(x)
+
         # else:
         #     output_dict = self.base(input, mixup_lambda)
         #     embedding = output_dict['embedding']
@@ -201,12 +214,22 @@ class PANNS_CNN6(nn.Module):
         embedding = F.dropout(x, p=0.5, training=self.training)
         clipwise_output = self.fc_transfer(embedding)
 
-        if self.training and self.args.spec_aug == 'mixup':
-            output_dict = {'rn_indices':rn_indices, 'mixup_lambda': lam, 'clipwise_output': clipwise_output, 'embedding': embedding}
-        elif self.training and self.args.spec_aug == 'diffres':
-            output_dict = {'clipwise_output': clipwise_output, 'embedding': embedding, 'diffres_loss': guide_loss}
-        else:
-            output_dict = {'clipwise_output': clipwise_output, 'embedding': embedding}
+        output_dict = {
+            'clipwise_output': clipwise_output,
+            'embedding': embedding
+        }
+
+        if self.training:
+            if self.args.spec_aug in ['mixup', 'specmix']:
+                output_dict.update({
+                    'rn_indices': rn_indices,
+                    'mixup_lambda': lam
+                })
+            elif self.args.spec_aug == 'diffres':
+                output_dict.update({
+                    'diffres_loss': guide_loss
+                })
+
         return output_dict
 
 

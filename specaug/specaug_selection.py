@@ -31,6 +31,22 @@ def process_outputs(model, args, inputs, targets, criterion):
                             F.cross_entropy(outputs, labels[rn_indices], reduction="none") * (1. - mixup_lambda.reshape(bs)))
             loss = samples_loss.mean() + loss  # Add mixup loss to base loss
 
+    # Apply SpecMix if specified in args
+    elif hasattr(args, 'spec_aug') and args.spec_aug == 'specmix':
+        mixup_lambda = output_dict.get('mixup_lambda')
+        rn_indices = output_dict.get('rn_indices')
+
+        # If SpecMix was applied (rn_indices is not None), calculate additional mixup loss
+        if rn_indices is not None and mixup_lambda is not None:
+            # Calculate individual losses for each component
+            bs = inputs.size(0)
+            labels = targets.argmax(dim=-1)
+            samples_loss = (
+                F.cross_entropy(outputs, labels, reduction="none") * mixup_lambda.reshape(bs) +
+                F.cross_entropy(outputs, labels[rn_indices], reduction="none") * (1. - mixup_lambda.reshape(bs))
+            )
+            loss = samples_loss.mean() + loss
+
     elif hasattr(args, 'spec_aug') and args.spec_aug == 'diffres':
         diffres_loss = output_dict.get('diffres_loss')
         if diffres_loss is not None:

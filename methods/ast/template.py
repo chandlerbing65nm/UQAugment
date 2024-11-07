@@ -25,6 +25,7 @@ from methods.ast.utils import mixup
 
 from specaug.diffres.frontend import DiffRes
 from specaug.fma.frontend import FMA
+from specaug.specmix.frontend import SpecMix
 
 from torchlibrosa.stft import Spectrogram, LogmelFilterBank
 from torchlibrosa.augmentation import SpecAugmentation
@@ -116,6 +117,14 @@ class AudioSpectrogramTransformer(nn.Module):
             learn_pos_emb=False
         )
 
+        self.specmix = SpecMix(
+            prob = 0.5,
+            min_band_size = mel_bins // 8,
+            max_band_size = mel_bins // 2,
+            max_frequency_bands = 2,
+            max_time_bands = 2,
+        )
+
         self.fma = FMA(
             in_t_dim=int((sample_rate / hop_size) * 2) + 1,  # Adjust based on input dimensions
             in_f_dim=mel_bins,
@@ -194,17 +203,31 @@ class AudioSpectrogramTransformer(nn.Module):
                     x[rn_indices] * (1. - lam.reshape(bs, 1, 1, 1))
             x = x.squeeze(1)
 
-        
+        elif self.args.spec_aug == 'specmix':
+            if self.training:
+                x, rn_indices, lam = self.specmix(x)
+            x = x.squeeze(1)
+
         # Get logits from ASTModel
         logits = self.backbone(x)  # Shape: (batch_size, num_classes)
 
-        if self.training and self.args.spec_aug == 'mixup':
-            output_dict = {'rn_indices':rn_indices, 'mixup_lambda': lam, 'clipwise_output': logits}
-        elif self.training and self.args.spec_aug == 'diffres':
-            output_dict = {'clipwise_output': logits, 'diffres_loss': guide_loss}
-        else:
-            output_dict = {'clipwise_output': logits}
+        output_dict = {
+            'clipwise_output': logits
+        }
+
+        if self.training:
+            if self.args.spec_aug in ['mixup', 'specmix']:
+                output_dict.update({
+                    'rn_indices': rn_indices,
+                    'mixup_lambda': lam
+                })
+            elif self.args.spec_aug == 'diffres':
+                output_dict.update({
+                    'diffres_loss': guide_loss
+                })
+
         return output_dict
+
 
 
 if __name__ == '__main__':

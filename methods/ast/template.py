@@ -94,6 +94,7 @@ class AudioSpectrogramTransformer(nn.Module):
         self.fmin = fmin
         self.fmax = fmax
         self.args = args
+        self.duration = 10
 
         # Initialize frontends
         self.spectrogram_extractor = Spectrogram(n_fft=window_size, hop_length=hop_size, 
@@ -111,7 +112,7 @@ class AudioSpectrogramTransformer(nn.Module):
 
 
         self.diffres = DiffRes(
-            in_t_dim=int((sample_rate / hop_size) * 2) + 1,  # Adjust based on input dimensions
+            in_t_dim=int((sample_rate / hop_size) * self.duration) + 1,  # Adjust based on input dimensions
             in_f_dim=mel_bins,
             dimension_reduction_rate=0.60,
             learn_pos_emb=False
@@ -126,7 +127,7 @@ class AudioSpectrogramTransformer(nn.Module):
         )
 
         self.fma = FMA(
-            in_t_dim=int((sample_rate / hop_size) * 2) + 1,  # Adjust based on input dimensions
+            in_t_dim=int((sample_rate / hop_size) * self.duration) + 1,  # Adjust based on input dimensions
             in_f_dim=mel_bins,
         )
 
@@ -134,10 +135,10 @@ class AudioSpectrogramTransformer(nn.Module):
         # Initialize ASTModel backbone
         if self.args.spec_aug == 'diffres':
             ast_fdim = mel_bins
-            ast_tdim = int((int((sample_rate / hop_size) * 2) + 1) * (1 - 0.60))
+            ast_tdim = int((int((sample_rate / hop_size) * self.duration) + 1) * (1 - 0.60))
         else:
             ast_fdim = mel_bins
-            ast_tdim = int((sample_rate / hop_size) * 2) + 1
+            ast_tdim = int((sample_rate / hop_size) * self.duration) + 1
 
         self.backbone = ASTModel(
             label_dim=self.num_classes,  # Initial label_dim; will adjust later

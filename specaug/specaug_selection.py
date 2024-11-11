@@ -27,11 +27,11 @@ def process_outputs(model, args, inputs, targets, criterion):
         if mixup_lambda is not None and rn_indices is not None:
             bs = inputs.size(0)
             labels = targets.argmax(dim=-1)
-            samples_loss = (F.cross_entropy(outputs, labels, reduction="none") * mixup_lambda.reshape(bs) +
-                            F.cross_entropy(outputs, labels[rn_indices], reduction="none") * (1. - mixup_lambda.reshape(bs)))
+            samples_loss = (
+                F.cross_entropy(outputs, labels, reduction="none") * mixup_lambda.reshape(bs) +
+                F.cross_entropy(outputs, labels[rn_indices], reduction="none") * (1. - mixup_lambda.reshape(bs)))
             loss = samples_loss.mean() + loss  # Add mixup loss to base loss
 
-    # Apply SpecMix if specified in args
     elif hasattr(args, 'spec_aug') and args.spec_aug == 'specmix':
         mixup_lambda = output_dict.get('mixup_lambda')
         rn_indices = output_dict.get('rn_indices')

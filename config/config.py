@@ -9,6 +9,7 @@ def parse_args():
     general = parser.add_argument_group('General Parameters')
     general.add_argument('--seed', type=int, default=20, help='Random seed')
     general.add_argument('--data_path', type=str, default='/scratch/project_465001389/chandler_scratch/Projects/UWAC/datasets/affia3k/', help='Path to the dataset')
+    general.add_argument('--csv_path', type=str, default='/scratch/project_465001389/chandler_scratch/Datasets/ssw60/audio_ml.csv', help='Path to the ssw60 scv metadata')
     general.add_argument('--dataset', type=str, default='affia3k', help='Dataset to use for training and validation')
     general.add_argument('--num_classes', type=int, default=4, help='Number of classes')
 

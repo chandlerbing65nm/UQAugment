@@ -18,7 +18,7 @@ from loggers.ckpt_saving import save_checkpoint
 from datasets.dataset_selection import get_dataloaders
 
 from datasets.affia3k import get_dataloader as affia3k_loader
-from sklearn.metrics import average_precision_score, accuracy_score
+from sklearn.metrics import average_precision_score, accuracy_score, f1_score
 from sklearn.preprocessing import label_binarize
 
 from tqdm import tqdm
@@ -74,6 +74,10 @@ def main():
             optimizer, 
             lr_lambda=lambda epoch: min(1.0, epoch / args.warmup_epochs)
         )
+
+    # Initialize learning rate tracking
+    lr_reduce_count = 0
+    prev_lr = args.learning_rate
 
     best_val_map = -np.inf
     best_val_acc = -np.inf
@@ -134,7 +138,7 @@ def main():
                 else:
                     outputs = model(inputs)
 
-                outputs = torch.softmax(outputs, dim=-1) # for classification metrics
+                outputs = torch.softmax(outputs, dim=-1)  # for classification metrics
 
                 # Store predictions and targets
                 all_val_targets.append(targets.argmax(dim=-1).cpu().numpy())
@@ -149,23 +153,43 @@ def main():
 
         val_acc = accuracy_score(all_val_targets, all_val_outputs.argmax(axis=-1))
         val_map = average_precision_score(all_val_targets_one_hot, all_val_outputs, average='macro')
+        val_f1 = f1_score(all_val_targets, all_val_outputs.argmax(axis=-1), average='macro')
 
         print(f'Epoch [{epoch+1}/{args.max_epoch}], '
               f'Val Accuracy: {val_acc:.4f}, '
-              f'Val mAP: {val_map:.4f}')
+              f'Val mAP: {val_map:.4f}, '
+              f'Val F1: {val_f1:.4f}')
 
         # Update learning rate
         if args.lr_warmup and epoch < args.warmup_epochs:
+            # Apply the warm-up scheduler if within warm-up period
             warmup_scheduler.step()
+            current_lr = optimizer.param_groups[0]['lr']
+            print(f"Warmup Scheduler applied at epoch {epoch+1}, learning rate is {current_lr:.6f}")
         else:
-            scheduler.step(val_acc)
+            # Use only the main scheduler after warm-up period
+            scheduler.step(val_f1)
+            current_lr = optimizer.param_groups[0]['lr']
+            print(f"Main Scheduler applied at epoch {epoch+1}, learning rate is {current_lr:.6f}")
+
+            # Check if learning rate has been reduced
+            if current_lr < prev_lr:
+                lr_reduce_count += 1
+                print(f"Learning rate reduced to {current_lr:.6f} at epoch {epoch+1}")
+                if lr_reduce_count >= 5:
+                    print("Learning rate has been reduced 5x, stopping training.")
+                    break  # Exit the training loop
+
+            prev_lr = current_lr  # Update previous learning rate
 
         # Log metrics to WandB
         log_metrics({
             "Train Loss": epoch_loss,
             "Train Accuracy": train_acc,
             "Validation Accuracy": val_acc,
-            "Validation mAP": val_map
+            "Validation mAP": val_map,
+            "Validation F1": val_f1,
+            "Learning Rate": current_lr  # Optionally log the learning rate
         })
 
         # Save checkpoints

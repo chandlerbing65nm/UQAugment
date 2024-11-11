@@ -55,6 +55,7 @@ class PANNS_CNN6(nn.Module):
         self.fmax = fmax
         self.num_classes = num_classes
         self.args = args
+        self.duration = 0.5
 
         # Step 1: Create base Cnn6 instance (original architecture)
         self.base = Cnn6(sample_rate, window_size, hop_size, mel_bins, fmin, 
@@ -76,7 +77,7 @@ class PANNS_CNN6(nn.Module):
                                                freq_drop_width=8, freq_stripes_num=2)
 
         self.diffres = DiffRes(
-            in_t_dim=int(int((sample_rate / hop_size) * 2) + 1),
+            in_t_dim=int(int((sample_rate / hop_size) * self.duration) + 1),
             in_f_dim=mel_bins,
             dimension_reduction_rate=0.60,
             learn_pos_emb=False
@@ -91,7 +92,7 @@ class PANNS_CNN6(nn.Module):
         )
 
         self.fma = FMA(
-            in_t_dim=int(int((sample_rate / hop_size) * 2) + 1),
+            in_t_dim=int(int((sample_rate / hop_size) * self.duration) + 1),
             in_f_dim=mel_bins,
         )
 

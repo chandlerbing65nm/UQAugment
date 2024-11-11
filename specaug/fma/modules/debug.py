@@ -12,7 +12,7 @@ class SpecMix(nn.Module):
         self.max_time_bands = max_time_bands
 
     def get_band(self, x, min_band_size, max_band_size, band_type, mask):
-        axis = 2 if band_type.lower() == 'freq' else 1
+        axis = 3 if band_type.lower() == 'freq' else 2
         band_size = random.randint(min_band_size, max_band_size)
         mask_start = random.randint(0, x.size(axis) - band_size)
         mask_end = mask_start + band_size

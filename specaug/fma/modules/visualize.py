@@ -86,6 +86,7 @@ def plot_feature_map(feature, title, filename, sample_rate, mel_bins):
     Plot the feature map with the frames on the x-axis and feature dimensions starting from 50 Hz.
     """
     plt.figure(figsize=(12, 8))
+
     # Transpose the feature map to have frames on the x-axis and frequency on the y-axis
     feature = feature.T  # Now shape is [feat_dim, frames]
     
@@ -112,16 +113,18 @@ if __name__ == "__main__":
     transform = get_transforms(args)
 
     # Initialize data loaders using get_dataloaders
-    args.data_path='/scratch/project_465001389/chandler_scratch/Datasets/uffia'
-    args.dataset='uffia' 
+    args.data_path='/scratch/project_465001389/chandler_scratch/Datasets/watkins'
+    args.dataset='watkins' 
+    args.batch_size = 4
+    args.sample_rate = 8000
     train_dataset, train_loader, val_dataset, val_loader = get_dataloaders(args, transform)
 
     # Initialize the spectrogram and log-mel extractor
-    window_size = args.window_size
-    hop_size = args.hop_size
-    sample_rate = 64000
-    mel_bins = args.mel_bins
-    fmin = 50
+    window_size = 64
+    hop_size = 16
+    sample_rate = args.sample_rate
+    mel_bins = 64
+    fmin = 1
     fmax = sample_rate // 2
     amin = 1e-10
     ref = 1.0
@@ -143,7 +146,7 @@ if __name__ == "__main__":
     bn = nn.BatchNorm2d(mel_bins)
 
     # Get a batch of data
-    for batch in val_loader:
+    for batch in train_loader:
         inputs = batch['waveform']  # Assuming the batch contains waveform data
         break  # We only need one batch for visualization
 

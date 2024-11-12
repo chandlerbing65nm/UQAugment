@@ -94,7 +94,7 @@ class AudioSpectrogramTransformer(nn.Module):
         self.fmin = fmin
         self.fmax = fmax
         self.args = args
-        self.duration = 10
+        self.duration = args.target_duration
 
         # Initialize frontends
         self.spectrogram_extractor = Spectrogram(n_fft=window_size, hop_length=hop_size, 

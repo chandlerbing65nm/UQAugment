@@ -28,6 +28,7 @@ def parse_args():
 
     # Data Processing Parameters
     data_processing = parser.add_argument_group('Data Processing Parameters')
+    data_processing.add_argument('--target_duration', type=float, default=2, help='duration of audio in seconds')
     data_processing.add_argument('--sample_rate', type=int, default=128000, help='Sample rate for audio')
     data_processing.add_argument('--window_size', type=int, default=2048, help='Window size for audio feature extraction')
     data_processing.add_argument('--hop_size', type=int, default=1024, help='Hop size for audio feature extraction')

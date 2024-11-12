@@ -7,10 +7,10 @@
 #SBATCH --mem-per-cpu=8G
 #SBATCH --gpus-per-node=1
 #SBATCH --nodes=1                                  
-#SBATCH --partition=standard-g            
+#SBATCH --partition=small-g            
 #SBATCH --time=24:00:00           
 #SBATCH --account=project_465001389
-#SBATCH --output=/users/doloriel/work/slurm/watkins/cnn6-specaugment2-lumi.out
+#SBATCH --output=/users/doloriel/work/slurm/watkins/cnn6-diffres2-lumi.out
 
 # Load necessary modules (if required)
 conda init
@@ -54,6 +54,8 @@ python train.py \
     --hop_size 16 \
     --mel_bins 64 \
     --model_name "panns_cnn6" \
-    --spec_aug "specaugment" \
+    --spec_aug "diffres" \
     --fmin 1 \
     --fmax 4000 \
+    --target_duration 0.5 \
+    --audiomentations \

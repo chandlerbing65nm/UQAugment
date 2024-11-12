@@ -168,7 +168,7 @@ def main():
             print(f"Warmup Scheduler applied at epoch {epoch+1}, learning rate is {current_lr:.6f}")
         else:
             # Use only the main scheduler after warm-up period
-            scheduler.step(val_f1)
+            scheduler.step(val_acc)
             current_lr = optimizer.param_groups[0]['lr']
             print(f"Main Scheduler applied at epoch {epoch+1}, learning rate is {current_lr:.6f}")
 

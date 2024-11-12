@@ -55,7 +55,7 @@ class PANNS_CNN6(nn.Module):
         self.fmax = fmax
         self.num_classes = num_classes
         self.args = args
-        self.duration = 0.5
+        self.duration = args.target_duration
 
         # Step 1: Create base Cnn6 instance (original architecture)
         self.base = Cnn6(sample_rate, window_size, hop_size, mel_bins, fmin, 

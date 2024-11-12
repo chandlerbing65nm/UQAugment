@@ -94,6 +94,7 @@ def get_dataloaders(args, transform):
             shuffle=True,
             drop_last=True,
             data_path=args.data_path,
+            target_duration=args.target_duration,
             transform=transform
         )
         val_dataset, val_loader = watkins_loader(
@@ -104,6 +105,7 @@ def get_dataloaders(args, transform):
             shuffle=False,
             drop_last=False,
             data_path=args.data_path,
+            target_duration=args.target_duration,
             transform=None  # Typically, no augmentation for validation
         )
     else:

@@ -152,8 +152,8 @@ def main():
         all_val_outputs = np.concatenate(all_val_outputs, axis=0)
 
         val_acc = accuracy_score(all_val_targets, all_val_outputs.argmax(axis=-1))
-        val_map = average_precision_score(all_val_targets_one_hot, all_val_outputs, average='macro')
-        val_f1 = f1_score(all_val_targets, all_val_outputs.argmax(axis=-1), average='macro')
+        val_map = average_precision_score(all_val_targets_one_hot, all_val_outputs, average='weighted')
+        val_f1 = f1_score(all_val_targets, all_val_outputs.argmax(axis=-1), average='weighted')
 
         print(f'Epoch [{epoch+1}/{args.max_epoch}], '
               f'Val Accuracy: {val_acc:.4f}, '

@@ -1,16 +1,16 @@
 #!/bin/bash
 
-#SBATCH --job-name=affia3k         
+#SBATCH --job-name=audio_classification         
 #SBATCH --ntasks=1                 
 #SBATCH --cpus-per-task=4         
 #SBATCH --ntasks-per-node=1
 #SBATCH --mem-per-cpu=8G
 #SBATCH --gpus-per-node=1
 #SBATCH --nodes=1                                  
-#SBATCH --partition=small-g            
+#SBATCH --partition=standard-g            
 #SBATCH --time=24:00:00           
 #SBATCH --account=project_465001389
-#SBATCH --output=/users/doloriel/work/slurm/watkins/cnn6-diffres2-lumi.out
+#SBATCH --output=/users/doloriel/work/slurm/watkins/ast-fma(temp=0.2)1-lumi.out
 
 # Load necessary modules (if required)
 conda init
@@ -60,21 +60,40 @@ cd /users/doloriel/work/Repo/UWAC
 #     --target_duration 0.5 \
 #     --audiomentations \
 
+# python train.py \
+#     --patience 20 \
+#     --lr_warmup \
+#     --batch_size  128\
+#     --max_epoch 400 \
+#     --wandb_mode "offline" \
+#     --dataset risc \
+#     --data_path /scratch/project_465001389/chandler_scratch/Datasets/risc/speech/ \
+#     --num_classes 4 \
+#     --sample_rate 16000 \
+#     --window_size 1024 \
+#     --hop_size 512 \
+#     --mel_bins 64 \
+#     --model_name "panns_cnn6" \
+#     --spec_aug "fma" \
+#     --fmin 1 \
+#     --fmax 8000 \
+#     --target_duration 3.5
+
 python train.py \
     --patience 20 \
     --lr_warmup \
-    --batch_size  128\
-    --max_epoch 400 \
+    --batch_size 256 \
+    --max_epoch 500 \
     --wandb_mode "offline" \
-    --dataset risc \
-    --data_path /scratch/project_465001389/chandler_scratch/Datasets/risc/speech/ \
-    --num_classes 4 \
+    --dataset ssw60 \
+    --data_path /scratch/project_465001389/chandler_scratch/Datasets/ssw60/audio_ml/ \
+    --num_classes 60 \
     --sample_rate 16000 \
-    --window_size 1024 \
-    --hop_size 512 \
-    --mel_bins 64 \
-    --model_name "panns_cnn6" \
+    --window_size 512 \
+    --hop_size 128 \
+    --mel_bins 128 \
+    --model_name "ast" \
     --spec_aug "fma" \
     --fmin 1 \
     --fmax 8000 \
-    --target_duration 3.5
+    --target_duration 0.5

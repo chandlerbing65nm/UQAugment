@@ -2,8 +2,7 @@
 
 from .affia3k import get_dataloader as affia3k_loader
 from .uffia import get_dataloader as uffia_loader
-from .ssw60 import get_dataloader as ssw60_loader
-from .watkins import get_dataloader as watkins_loader
+from .risc import get_dataloader as risc_loader
 
 def get_dataloaders(args, transform):
     """
@@ -64,49 +63,26 @@ def get_dataloaders(args, transform):
             data_path=args.data_path,
             transform=None
         )
-    elif args.dataset == 'ssw60':
-        train_dataset, train_loader = ssw60_loader(
-            csv_path=args.csv_path,
-            audio_dir=args.data_path,
+    elif args.dataset == 'risc':
+        train_dataset, train_loader = risc_loader(
+            root_dir=args.data_path,
             split='train',
             batch_size=args.batch_size,
             sample_rate=args.sample_rate,
+            target_duration=args.target_duration,
             shuffle=True,
             drop_last=True,
             transform=transform
         )
-        val_dataset, val_loader = ssw60_loader(
-            csv_path=args.csv_path,
-            audio_dir=args.data_path,
+        val_dataset, val_loader = risc_loader(
+            root_dir=args.data_path,
             split='test',
             batch_size=args.batch_size,
             sample_rate=args.sample_rate,
+            target_duration=args.target_duration,
             shuffle=False,
             drop_last=False,
             transform=None
-        )
-    elif args.dataset == 'watkins':
-        train_dataset, train_loader = watkins_loader(
-            split='train',
-            batch_size=args.batch_size,
-            sample_rate=args.sample_rate,
-            seed=args.seed,
-            shuffle=True,
-            drop_last=True,
-            data_path=args.data_path,
-            target_duration=args.target_duration,
-            transform=transform
-        )
-        val_dataset, val_loader = watkins_loader(
-            split='test',
-            batch_size=args.batch_size,
-            sample_rate=args.sample_rate,
-            seed=args.seed,
-            shuffle=False,
-            drop_last=False,
-            data_path=args.data_path,
-            target_duration=args.target_duration,
-            transform=None  # Typically, no augmentation for validation
         )
     else:
         raise ValueError(f"Unsupported dataset: {args.dataset}")

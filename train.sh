@@ -40,22 +40,41 @@ cd /users/doloriel/work/Repo/UWAC
 #     --fmin 1 \
 #     --fmax 128000 \
 
+# python train.py \
+#     --patience 20 \
+#     --lr_warmup \
+#     --batch_size 256 \
+#     --max_epoch 500 \
+#     --wandb_mode "offline" \
+#     --dataset watkins \
+#     --data_path /scratch/project_465001389/chandler_scratch/Datasets/watkins/ \
+#     --num_classes 5 \
+#     --sample_rate 8000 \
+#     --window_size 32 \
+#     --hop_size 16 \
+#     --mel_bins 64 \
+#     --model_name "panns_cnn6" \
+#     --spec_aug "diffres" \
+#     --fmin 1 \
+#     --fmax 4000 \
+#     --target_duration 0.5 \
+#     --audiomentations \
+
 python train.py \
     --patience 20 \
     --lr_warmup \
-    --batch_size 256 \
-    --max_epoch 500 \
+    --batch_size  128\
+    --max_epoch 400 \
     --wandb_mode "offline" \
-    --dataset watkins \
-    --data_path /scratch/project_465001389/chandler_scratch/Datasets/watkins/ \
-    --num_classes 5 \
-    --sample_rate 8000 \
-    --window_size 32 \
-    --hop_size 16 \
+    --dataset risc \
+    --data_path /scratch/project_465001389/chandler_scratch/Datasets/risc/speech/ \
+    --num_classes 4 \
+    --sample_rate 16000 \
+    --window_size 1024 \
+    --hop_size 512 \
     --mel_bins 64 \
     --model_name "panns_cnn6" \
-    --spec_aug "diffres" \
+    --spec_aug "fma" \
     --fmin 1 \
-    --fmax 4000 \
-    --target_duration 0.5 \
-    --audiomentations \
+    --fmax 8000 \
+    --target_duration 3.5

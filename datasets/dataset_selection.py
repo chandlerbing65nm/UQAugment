@@ -2,8 +2,7 @@
 
 from .affia3k import get_dataloader as affia3k_loader
 from .uffia import get_dataloader as uffia_loader
-from .risc import get_dataloader as risc_loader
-from .dcase20 import get_dataloader as dcase20_loader
+from .fsdnoisy18k import get_dataloader as fsdnoisy18k_loader
 
 def get_dataloaders(args, transform):
     """
@@ -64,46 +63,23 @@ def get_dataloaders(args, transform):
             data_path=args.data_path,
             transform=None
         )
-    elif args.dataset == 'risc':
-        train_dataset, train_loader = risc_loader(
-            root_dir=args.data_path,
+    elif args.dataset == 'fsdnoisy18k':
+        train_dataset, train_loader = fsdnoisy18k_loader(
             split='train',
             batch_size=args.batch_size,
             sample_rate=args.sample_rate,
-            target_duration=args.target_duration,
             shuffle=True,
-            drop_last=True,
-            transform=transform
+            data_path=args.data_path,
+            target_duration=args.target_duration,
+            transform=transform,
         )
-        val_dataset, val_loader = risc_loader(
-            root_dir=args.data_path,
+        val_dataset, val_loader = fsdnoisy18k_loader(
             split='test',
             batch_size=args.batch_size,
             sample_rate=args.sample_rate,
-            target_duration=args.target_duration,
             shuffle=False,
-            drop_last=False,
-            transform=None
-        )
-    elif args.dataset == 'dcase20':
-        train_dataset, train_loader = dcase20_loader(
             data_path=args.data_path,
-            split='train',
-            batch_size=args.batch_size,
-            sample_rate=args.sample_rate,
             target_duration=args.target_duration,
-            shuffle=True,
-            drop_last=True,
-            transform=transform
-        )
-        val_dataset, val_loader = dcase20_loader(
-            data_path=args.data_path,
-            split='test',
-            batch_size=args.batch_size,
-            sample_rate=args.sample_rate,
-            target_duration=args.target_duration,
-            shuffle=False,
-            drop_last=False,
             transform=None
         )
     else:

@@ -7,23 +7,39 @@
 #SBATCH --mem-per-cpu=8G
 #SBATCH --gpus-per-node=1
 #SBATCH --nodes=1                                  
-#SBATCH --partition=standard-g            
+#SBATCH --partition=small-g            
 #SBATCH --time=24:00:00           
 #SBATCH --account=project_465001389
-#SBATCH --output=/users/doloriel/work/slurm/risc/cnn6-fma(temp=0.2)1-lumi.out
+#SBATCH --output=/users/doloriel/work/slurm/fsdnoisy18k/cnn6-specaugment2-lumi.out
+
+
+# fma(temp=0.2)
+# diffres
+# specaugment
 
 # Load necessary modules (if required)
 conda init
 conda activate uwac
 cd /users/doloriel/work/Repo/UWAC
 
-
+############################ AFFIA3K ############################
 # python train.py \
-#     --model_name "ast" \
-#     --spec_aug "specmix" \
 #     --batch_size 200 \
-#     --wandb_mode "offline"
+#     --max_epoch 500 \
+#     --wandb_mode "offline" \
+#     --dataset affia3k \
+#     --data_path /scratch/project_465001389/chandler_scratch/Datasets/affia3k \
+#     --num_classes 4 \
+#     --sample_rate 128000 \
+#     --window_size 2048 \
+#     --hop_size 1024 \
+#     --mel_bins 64 \
+#     --model_name "panns_cnn6" \
+#     --spec_aug "fma" \
+#     --fmin 50 \
+#     --fmax None
 
+############################ UFFIA ############################
 # python train.py \
 #     --batch_size 200 \
 #     --max_epoch 400 \
@@ -35,82 +51,26 @@ cd /users/doloriel/work/Repo/UWAC
 #     --window_size 2048 \
 #     --hop_size 1024 \
 #     --mel_bins 64 \
-#     --model_name "ast" \
-#     --spec_aug "specmix" \
+#     --model_name "panns_cnn6" \
+#     --spec_aug "fma" \
 #     --fmin 1 \
 #     --fmax 128000 \
 
-# python train.py \
-#     --patience 20 \
-#     --lr_warmup \
-#     --batch_size 256 \
-#     --max_epoch 500 \
-#     --wandb_mode "offline" \
-#     --dataset watkins \
-#     --data_path /scratch/project_465001389/chandler_scratch/Datasets/watkins/ \
-#     --num_classes 5 \
-#     --sample_rate 8000 \
-#     --window_size 32 \
-#     --hop_size 16 \
-#     --mel_bins 64 \
-#     --model_name "panns_cnn6" \
-#     --spec_aug "diffres" \
-#     --fmin 1 \
-#     --fmax 4000 \
-#     --target_duration 0.5 \
-#     --audiomentations \
-
-# python train.py \
-#     --batch_size 128 \
-#     --max_epoch 500 \
-#     --wandb_mode "offline" \
-#     --dataset risc \
-#     --data_path /scratch/project_465001389/chandler_scratch/Datasets/risc/speech/ \
-#     --num_classes 4 \
-#     --sample_rate 16000 \
-#     --window_size 64 \
-#     --hop_size 16 \
-#     --mel_bins 64 \
-#     --model_name "panns_cnn6" \
-#     --spec_aug "specaugment" \
-#     --fmin 1 \
-#     --fmax 8000 \
-#     --target_duration 0.25
-
-# python train.py \
-#     --patience 20 \
-#     --lr_warmup \
-#     --batch_size 256 \
-#     --max_epoch 500 \
-#     --wandb_mode "offline" \
-#     --dataset ssw60 \
-#     --data_path /scratch/project_465001389/chandler_scratch/Datasets/ssw60/audio_ml/ \
-#     --num_classes 60 \
-#     --sample_rate 16000 \
-#     --window_size 512 \
-#     --hop_size 128 \
-#     --mel_bins 128 \
-#     --model_name "ast" \
-#     --spec_aug "fma" \
-#     --fmin 1 \
-#     --fmax 8000 \
-#     --target_duration 0.5
-
+############################ DEBUG DATASETS ############################
 python train.py \
-    --patience 5 \
-    --lr_warmup \
-    --batch_size 128 \
+    --batch_size 64 \
     --max_epoch 200 \
     --wandb_mode "offline" \
-    --dataset dcase20 \
-    --data_path /scratch/project_465001389/chandler_scratch/Datasets/dcase20/development \
-    --num_classes 6 \
+    --dataset fsdnoisy18k \
+    --data_path /scratch/project_465001389/chandler_scratch/Datasets/fsdnoisy18k \
+    --num_classes 20 \
     --sample_rate 16000 \
-    --window_size 1024 \
-    --hop_size 512 \
-    --mel_bins 128 \
+    --window_size 512 \
+    --hop_size 128 \
+    --mel_bins 64 \
     --model_name "panns_cnn6" \
-    --spec_aug "fma" \
+    --spec_aug "specaugment" \
     --fmin 1 \
     --fmax 8000 \
-    --target_duration 10
+    --target_duration 2
+

@@ -9,7 +9,7 @@ def parse_args():
     general = parser.add_argument_group('General Parameters')
     general.add_argument('--seed', type=int, default=20, help='Random seed')
     general.add_argument('--data_path', type=str, default='/scratch/project_465001389/chandler_scratch/Projects/UWAC/datasets/affia3k/', help='Path to the dataset')
-    general.add_argument('--csv_path', type=str, default='/scratch/project_465001389/chandler_scratch/Datasets/ssw60/audio_ml.csv', help='Path to the ssw60 scv metadata')
+    general.add_argument('--csv_path', type=str, default=None, help='Path to the csv metadata')
     general.add_argument('--dataset', type=str, default='affia3k', help='Dataset to use for training and validation')
     general.add_argument('--num_classes', type=int, default=4, help='Number of classes')
 
@@ -35,7 +35,6 @@ def parse_args():
     data_processing.add_argument('--mel_bins', type=int, default=64, help='Number of mel bins for audio feature extraction')
     data_processing.add_argument('--fmin', type=int, default=50, help='Minimum frequency for mel bins')
     data_processing.add_argument('--fmax', type=int, default=None, help='Maximum frequency for mel bins')
-    data_processing.add_argument('--freq_band', type=str, default='none', help='Frequency band for filtering (low, mid, high, none)')
 
     # Scheduler Parameters
     scheduler = parser.add_argument_group('Scheduler Parameters')
@@ -48,7 +47,6 @@ def parse_args():
     augmentation = parser.add_argument_group('Augmentation Parameters')
     augmentation.add_argument('--audiomentations', action='store_true', help='Apply audiomentations')
     augmentation.add_argument('--spec_aug',  type=str, default='specaugment', help='Name of the spectrogram augmentation')
-    augmentation.add_argument('--filter_chance', type=float, default=0.13, help='Chance of applying filter')
 
     # Logging Parameters
     logging_group = parser.add_argument_group('Logging Parameters')

@@ -31,7 +31,7 @@ class AudioDataset(Dataset):
         self.split = split
         self.transform = transform  # Include transform
 
-        self.file_list = []
+        self.segmented_file_list = []
         self.labels = []
 
         # Mapping from class name to integer label
@@ -61,12 +61,9 @@ class AudioDataset(Dataset):
             for file in files:
                 if file.endswith('.wav'):
                     filepath = os.path.join(root, file)
-                    # Extract sentence_index from filename
                     try:
                         _, _, sentence_index = file.split('_')
                         sentence_index = int(sentence_index.split('.')[0])  # Remove .wav and convert to int
-
-                        # Classify based on sentence_index
                         if 1 <= sentence_index <= 10:
                             class_files['high/low'].append(filepath)
                         elif 11 <= sentence_index <= 30:
@@ -76,35 +73,42 @@ class AudioDataset(Dataset):
                     except ValueError:
                         print(f"Filename format error in {file}")
 
+        # Calculate target samples per segment
+        target_samples = int(self.target_duration * self.sample_rate)
+
         # Split each class into train and test sets (80% train, 20% test)
-        self.file_list = []
-        self.labels = []
         for class_name, files in class_files.items():
             labels = [self.class_to_idx[class_name]] * len(files)
-            # Split while preserving class distribution
             train_files, test_files, train_labels, test_labels = train_test_split(
                 files, labels, test_size=0.2, random_state=42, stratify=labels)
 
             if self.split == 'train':
-                self.file_list.extend(train_files)
-                self.labels.extend(train_labels)
-            elif self.split == 'test':
-                self.file_list.extend(test_files)
-                self.labels.extend(test_labels)
+                split_files = train_files
+                split_labels = train_labels
             else:
-                raise ValueError("split must be 'train' or 'test'")
+                split_files = test_files
+                split_labels = test_labels
+
+            # Split long files into segments of target_duration
+            for file_path, label in zip(split_files, split_labels):
+                audio = load_audio(file_path, sr=self.sample_rate)
+                num_segments = len(audio) // target_samples
+                for segment_idx in range(num_segments):
+                    start_sample = segment_idx * target_samples
+                    end_sample = start_sample + target_samples
+                    if end_sample <= len(audio):  # Ensure segment fits within audio length
+                        self.segmented_file_list.append((file_path, start_sample, end_sample, label))
 
         # Convert labels to numpy array for indexing
-        self.labels = np.array(self.labels)
+        self.labels = np.array([label for _, _, _, label in self.segmented_file_list])
 
     def __len__(self):
-        return len(self.file_list)
+        return len(self.segmented_file_list)
 
     def __getitem__(self, idx):
-        audio_path = self.file_list[idx]
-        label = self.labels[idx]
+        file_path, start_sample, end_sample, label = self.segmented_file_list[idx]
 
-        waveform = self.load_and_process_audio(audio_path)
+        waveform = self.load_and_process_audio(file_path, start_sample, end_sample)
 
         if self.transform:
             waveform = self.transform(waveform)
@@ -113,29 +117,17 @@ class AudioDataset(Dataset):
         target = np.eye(self.num_classes)[label]
 
         return {
-            'audio_name': audio_path,
+            'audio_name': file_path,
             'waveform': torch.FloatTensor(waveform),
             'target': torch.FloatTensor(target)
         }
 
-    def load_and_process_audio(self, path):
+    def load_and_process_audio(self, path, start_sample, end_sample):
         """
-        Load audio file, resample, and pad or trim to target duration.
+        Load a segment of an audio file and process it.
         """
         y = load_audio(path, sr=self.sample_rate)
-
-        # Calculate number of samples for target duration
-        num_samples = int(self.target_duration * self.sample_rate)
-
-        if len(y) < num_samples:
-            # Pad with zeros
-            padding = num_samples - len(y)
-            y = np.pad(y, (0, padding), 'constant')
-        else:
-            # Trim to target duration
-            y = y[:num_samples]
-
-        return y
+        return y[start_sample:end_sample]
 
 def collate_fn(batch):
     """
@@ -150,7 +142,7 @@ def collate_fn(batch):
 
     return {'audio_name': audio_names, 'waveform': waveforms, 'target': targets}
 
-def get_dataloader(root_dir, split, batch_size, sample_rate=16000, target_duration=3.5,
+def get_dataloader(root_dir, split, batch_size, sample_rate=16000, target_duration=0.5,
                    shuffle=False, drop_last=False, num_workers=4, transform=None):
     """
     Create a DataLoader for the dataset.
@@ -162,11 +154,12 @@ def get_dataloader(root_dir, split, batch_size, sample_rate=16000, target_durati
                             drop_last=drop_last, num_workers=num_workers,
                             collate_fn=collate_fn)
     return dataset, dataloader
-# Example usage
+
+
 if __name__ == '__main__':
     root_dir = '/scratch/project_465001389/chandler_scratch/Datasets/risc/speech/'  # Replace with your dataset directory
     sample_rate = 16000
-    target_duration = 3.5  # Target duration in seconds
+    target_duration = 0.5  # Target duration in seconds
     batch_size = 1
     num_workers = 4
 

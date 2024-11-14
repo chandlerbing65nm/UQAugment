@@ -176,8 +176,8 @@ def main():
             if current_lr < prev_lr:
                 lr_reduce_count += 1
                 print(f"Learning rate reduced to {current_lr:.6f} at epoch {epoch+1}")
-                if lr_reduce_count >= 5:
-                    print("Learning rate has been reduced 5x, stopping training.")
+                if lr_reduce_count >= 3:
+                    print("Learning rate has been reduced 3x, stopping training.")
                     break  # Exit the training loop
 
             prev_lr = current_lr  # Update previous learning rate

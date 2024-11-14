@@ -58,8 +58,8 @@ cd /users/doloriel/work/Repo/UWAC
 
 ############################ DEBUG DATASETS ############################
 python train.py \
-    --batch_size 64 \
-    --max_epoch 200 \
+    --batch_size 200 \
+    --max_epoch 500 \
     --wandb_mode "offline" \
     --dataset fsdnoisy18k \
     --data_path /scratch/project_465001389/chandler_scratch/Datasets/fsdnoisy18k \

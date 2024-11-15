@@ -2,7 +2,7 @@
 
 from .affia3k import get_dataloader as affia3k_loader
 from .uffia import get_dataloader as uffia_loader
-from .fsdnoisy18k import get_dataloader as fsdnoisy18k_loader
+from .mrsffia import get_dataloader as mrsffia_loader
 
 def get_dataloaders(args, transform):
     """
@@ -63,23 +63,25 @@ def get_dataloaders(args, transform):
             data_path=args.data_path,
             transform=None
         )
-    elif args.dataset == 'fsdnoisy18k':
-        train_dataset, train_loader = fsdnoisy18k_loader(
+    elif args.dataset == 'mrsffia':
+        train_dataset, train_loader = mrsffia_loader(
             split='train',
             batch_size=args.batch_size,
             sample_rate=args.sample_rate,
-            shuffle=True,
+            shuffle=False,
+            seed=args.seed,
+            drop_last=False,
             data_path=args.data_path,
-            target_duration=args.target_duration,
-            transform=transform,
+            transform=None
         )
-        val_dataset, val_loader = fsdnoisy18k_loader(
+        val_dataset, val_loader = mrsffia_loader(
             split='test',
             batch_size=args.batch_size,
             sample_rate=args.sample_rate,
             shuffle=False,
+            seed=args.seed,
+            drop_last=False,
             data_path=args.data_path,
-            target_duration=args.target_duration,
             transform=None
         )
     else:

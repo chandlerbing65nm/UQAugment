@@ -56,21 +56,21 @@ cd /users/doloriel/work/Repo/UWAC
 #     --fmin 1 \
 #     --fmax 128000 \
 
-############################ DEBUG DATASETS ############################
+############################ MRS-FFIA ############################
 python train.py \
     --batch_size 200 \
-    --max_epoch 500 \
+    --max_epoch 400 \
     --wandb_mode "offline" \
-    --dataset fsdnoisy18k \
-    --data_path /scratch/project_465001389/chandler_scratch/Datasets/fsdnoisy18k \
-    --num_classes 20 \
-    --sample_rate 16000 \
-    --window_size 512 \
-    --hop_size 128 \
+    --dataset uffia \
+    --data_path /scratch/project_465001389/chandler_scratch/Datasets/uffia \
+    --num_classes 4 \
+    --sample_rate 22050 \
+    --window_size 1024 \
+    --hop_size 512 \
     --mel_bins 64 \
     --model_name "panns_cnn6" \
-    --spec_aug "specaugment" \
+    --spec_aug "fma" \
     --fmin 1 \
-    --fmax 8000 \
-    --target_duration 2
+    --fmax 14000 \
+    --target_duration 3 \
 

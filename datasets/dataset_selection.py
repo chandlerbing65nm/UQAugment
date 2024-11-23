@@ -86,52 +86,6 @@ def get_dataloaders(args, transform):
             data_path=args.data_path,
             transform=None
         )
-    elif args.dataset == 'mrsffia_fs':
-        train_dataset, train_loader = mrsffia_fs_loader(
-            split='train',
-            batch_size=args.batch_size,
-            sample_rate=args.sample_rate,
-            shuffle=False,
-            seed=args.seed,
-            drop_last=False,
-            data_path=args.data_path,
-            n_samples_per_class=8,
-            transform=None
-        )
-        val_dataset, val_loader = mrsffia_fs_loader(
-            split='test',
-            batch_size=args.batch_size,
-            sample_rate=args.sample_rate,
-            shuffle=False,
-            seed=args.seed,
-            drop_last=False,
-            data_path=args.data_path,
-            transform=None
-        )
-    elif args.dataset == 'risc_fs':
-        train_dataset, train_loader = risc_fs_loader(
-            split='train',
-            batch_size=args.batch_size,
-            sample_rate=args.sample_rate,
-            shuffle=False,
-            seed=args.seed,
-            drop_last=False,
-            root_dir=args.data_path,
-            n_samples_per_class=1,
-            target_duration=args.target_duration,
-            transform=None
-        )
-        val_dataset, val_loader = risc_fs_loader(
-            split='test',
-            batch_size=args.batch_size,
-            sample_rate=args.sample_rate,
-            shuffle=False,
-            seed=args.seed,
-            drop_last=False,
-            root_dir=args.data_path,
-            target_duration=args.target_duration,
-            transform=None
-        )
     else:
         raise ValueError(f"Unsupported dataset: {args.dataset}")
     

@@ -10,7 +10,7 @@
 #SBATCH --partition=standard-g            
 #SBATCH --time=24:00:00           
 #SBATCH --account=project_465001389
-#SBATCH --output=/users/doloriel/work/slurm/risc_fs/cnn6-specmix2-lumi.out
+#SBATCH --output=/users/doloriel/work/slurm/mrsffia/cnn6-specmix2-lumi.out
 
 
 # fma
@@ -75,22 +75,3 @@ cd /users/doloriel/work/Repo/UWAC
 #     --fmin 1 \
 #     --fmax 14000 \
 #     --target_duration 3 \
-
-############################ Debug ############################
-python train.py \
-    --batch_size 64 \
-    --max_epoch 100 \
-    --wandb_mode "offline" \
-    --dataset risc_fs \
-    --data_path /scratch/project_465001389/chandler_scratch/Datasets/risc/speech/ \
-    --num_classes 4 \
-    --sample_rate 16000 \
-    --window_size 512 \
-    --hop_size 124 \
-    --mel_bins 64 \
-    --model_name "panns_cnn6" \
-    --spec_aug "specmix" \
-    --fmin 1 \
-    --fmax 8000 \
-    --target_duration 1.0
-

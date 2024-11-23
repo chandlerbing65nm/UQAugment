@@ -7,15 +7,17 @@
 #SBATCH --mem-per-cpu=8G
 #SBATCH --gpus-per-node=1
 #SBATCH --nodes=1                                  
-#SBATCH --partition=small-g            
+#SBATCH --partition=standard-g            
 #SBATCH --time=24:00:00           
 #SBATCH --account=project_465001389
-#SBATCH --output=/users/doloriel/work/slurm/fsdnoisy18k/cnn6-specaugment2-lumi.out
+#SBATCH --output=/users/doloriel/work/slurm/risc_fs/cnn6-specmix2-lumi.out
 
 
-# fma(temp=0.2)
+# fma
 # diffres
 # specaugment
+# specmix
+# mixup
 
 # Load necessary modules (if required)
 conda init
@@ -57,20 +59,38 @@ cd /users/doloriel/work/Repo/UWAC
 #     --fmax 128000 \
 
 ############################ MRS-FFIA ############################
+# python train.py \
+#     --batch_size 64 \
+#     --max_epoch 100 \
+#     --wandb_mode "offline" \
+#     --dataset mrsffia_fs \
+#     --data_path /scratch/project_465001389/chandler_scratch/Datasets/mrsffia \
+#     --num_classes 4 \
+#     --sample_rate 22050 \
+#     --window_size 1024 \
+#     --hop_size 512 \
+#     --mel_bins 64 \
+#     --model_name "panns_cnn6" \
+#     --spec_aug "specmix" \
+#     --fmin 1 \
+#     --fmax 14000 \
+#     --target_duration 3 \
+
+############################ Debug ############################
 python train.py \
-    --batch_size 200 \
-    --max_epoch 400 \
+    --batch_size 64 \
+    --max_epoch 100 \
     --wandb_mode "offline" \
-    --dataset uffia \
-    --data_path /scratch/project_465001389/chandler_scratch/Datasets/uffia \
+    --dataset risc_fs \
+    --data_path /scratch/project_465001389/chandler_scratch/Datasets/risc/speech/ \
     --num_classes 4 \
-    --sample_rate 22050 \
-    --window_size 1024 \
-    --hop_size 512 \
+    --sample_rate 16000 \
+    --window_size 512 \
+    --hop_size 124 \
     --mel_bins 64 \
     --model_name "panns_cnn6" \
-    --spec_aug "fma" \
+    --spec_aug "specmix" \
     --fmin 1 \
-    --fmax 14000 \
-    --target_duration 3 \
+    --fmax 8000 \
+    --target_duration 1.0
 

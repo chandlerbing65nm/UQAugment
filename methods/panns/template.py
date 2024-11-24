@@ -30,11 +30,85 @@ from specaug.specmix.frontend import SpecMix
 from torchlibrosa.stft import Spectrogram, LogmelFilterBank
 from torchlibrosa.augmentation import SpecAugmentation
 
+class SpecAugmenter(nn.Module):
+    def __init__(self, sample_rate, hop_size, duration, mel_bins, args):
+        super(SpecAugmenter, self).__init__()
+
+        self.args = args
+        self.training = True  # Will be updated based on the model's training state
+
+        # SpecAugment
+        self.specaugment = SpecAugmentation(
+            time_drop_width=64,
+            time_stripes_num=2,
+            freq_drop_width=8,
+            freq_stripes_num=2
+        )
+
+        # DiffRes
+        self.diffres = DiffRes(
+            in_t_dim=int((sample_rate / hop_size) * duration) + 1,
+            in_f_dim=mel_bins,
+            dimension_reduction_rate=0.60,
+            learn_pos_emb=False
+        )
+
+        # SpecMix
+        self.specmix = SpecMix(
+            prob=0.5,
+            min_band_size=mel_bins // 8,
+            max_band_size=mel_bins // 2,
+            max_frequency_bands=2,
+            max_time_bands=2
+        )
+
+        # FMA
+        self.fma = FMA(
+            in_t_dim=int((sample_rate / hop_size) * duration) + 1,
+            in_f_dim=mel_bins
+        )
+
+    def forward(self, x):
+        spec_aug = self.args.spec_aug
+        output_dict = {}
+
+        if spec_aug == 'diffres':
+            x = x.squeeze(1)
+            ret = self.diffres(x)
+            guide_loss = ret["guide_loss"]
+            x = ret["features"].unsqueeze(1)
+            output_dict['diffres_loss'] = guide_loss
+
+        elif spec_aug == 'fma':
+            x = x.squeeze(1)
+            x = self.fma(x)
+            x = x.unsqueeze(1)
+
+        elif spec_aug == 'specaugment':
+            if self.training:
+                x = self.specaugment(x)
+
+        elif spec_aug == 'mixup':
+            if self.training:
+                bs = x.size(0)
+                rn_indices, lam = mixup(bs, 0.4)
+                lam = lam.to(x.device)
+                x = x * lam.view(bs, 1, 1, 1) + x[rn_indices] * (1. - lam.view(bs, 1, 1, 1))
+                output_dict['rn_indices'] = rn_indices
+                output_dict['mixup_lambda'] = lam
+
+        elif spec_aug == 'specmix':
+            if self.training:
+                x, rn_indices, lam = self.specmix(x)
+                output_dict['rn_indices'] = rn_indices
+                output_dict['mixup_lambda'] = lam
+
+        return x, output_dict
+        
 class PANNS_CNN6(nn.Module):
     def __init__(self, sample_rate, window_size, hop_size, mel_bins, fmin, 
                  fmax, num_classes, frontend='logmel', batch_size=200,
-                 freeze_base=False, device=None, args=None,
-                 ):
+                 freeze_base=False, device=None, args=None):
         """Classifier for a new task using pretrained Cnn6 as a sub-module."""
         super(PANNS_CNN6, self).__init__()
         audioset_classes_num = 527
@@ -61,44 +135,42 @@ class PANNS_CNN6(nn.Module):
         self.base = Cnn6(sample_rate, window_size, hop_size, mel_bins, fmin, 
                          fmax, audioset_classes_num)
 
-        # Step 2: Optionally store the custom modules (but do not apply them yet)
         # Spectrogram extractor
-        self.spectrogram_extractor = Spectrogram(n_fft=window_size, hop_length=hop_size, 
-            win_length=window_size, window=window, center=center, pad_mode=pad_mode, 
-            freeze_parameters=True)
+        self.spectrogram_extractor = Spectrogram(
+            n_fft=window_size,
+            hop_length=hop_size,
+            win_length=window_size,
+            window=window,
+            center=center,
+            pad_mode=pad_mode,
+            freeze_parameters=True
+        )
 
         # Logmel feature extractor
-        self.logmel_extractor = LogmelFilterBank(sr=sample_rate, n_fft=window_size, 
-            n_mels=mel_bins, fmin=fmin, fmax=fmax, ref=ref, amin=amin, top_db=top_db, 
-            freeze_parameters=True)
-
-        # Spec augmenter
-        self.specaugment = SpecAugmentation(time_drop_width=64, time_stripes_num=2, 
-                                               freq_drop_width=8, freq_stripes_num=2)
-
-        self.diffres = DiffRes(
-            in_t_dim=int(int((sample_rate / hop_size) * self.duration) + 1),
-            in_f_dim=mel_bins,
-            dimension_reduction_rate=0.60,
-            learn_pos_emb=False
+        self.logmel_extractor = LogmelFilterBank(
+            sr=sample_rate,
+            n_fft=window_size,
+            n_mels=mel_bins,
+            fmin=fmin,
+            fmax=fmax,
+            ref=ref,
+            amin=amin,
+            top_db=top_db,
+            freeze_parameters=True
         )
 
-        self.specmix = SpecMix(
-            prob = 0.5,
-            min_band_size = mel_bins // 8,
-            max_band_size = mel_bins // 2,
-            max_frequency_bands = 2,
-            max_time_bands = 2,
-        )
-
-        self.fma = FMA(
-            in_t_dim=int(int((sample_rate / hop_size) * self.duration) + 1),
-            in_f_dim=mel_bins,
+        # SpecAugmenter
+        self.spec_augmenter = SpecAugmenter(
+            sample_rate=sample_rate,
+            hop_size=hop_size,
+            duration=self.duration,
+            mel_bins=mel_bins,
+            args=args
         )
 
         # Transfer to another task layer
         self.fc_transfer = nn.Linear(512, num_classes, bias=True)  # Assuming 512 is embedding size
-        
+
         self.bn = nn.BatchNorm2d(mel_bins)
         if freeze_base:
             # Freeze AudioSet pretrained layers
@@ -155,48 +227,16 @@ class PANNS_CNN6(nn.Module):
         x = self.spectrogram_extractor(input)  # (batch, time_steps, freq_bins)
         x = self.logmel_extractor(x)  # (batch, time_steps, mel_bins)
 
-        # Pass the precomputed features (MFCC or LogMel) into the base model conv blocks
+        # Precomputed features alignment and normalization
         x = x.transpose(1, 3)  # Align dimensions for the base model
-        x = self.bn(x)   # Apply the batch normalization from base
+        x = self.bn(x)         # Apply batch normalization
         x = x.transpose(1, 3)
 
-        if self.args.spec_aug == 'diffres':
-            x = x.squeeze(1)
-            ret = self.diffres(x)
-            guide_loss = ret["guide_loss"]
-            x = ret["features"].unsqueeze(1)
+        # Apply SpecAugmentations
+        self.spec_augmenter.training = self.training  # Update training state
+        x, aug_output = self.spec_augmenter(x)
 
-        elif self.args.spec_aug == 'fma':
-            x = x.squeeze(1)
-            x = self.fma(x)
-            x = x.unsqueeze(1)
-
-        elif self.args.spec_aug == 'specaugment':
-            if self.training:
-                x = self.specaugment(x)
-
-        elif self.args.spec_aug == 'mixup':
-            if self.training:
-                bs = x.size(0)
-                rn_indices, lam = mixup(bs, 0.4)
-                lam = lam.to(x.device)
-                x = x * lam.reshape(bs, 1, 1, 1) + \
-                    x[rn_indices] * (1. - lam.reshape(bs, 1, 1, 1))
-
-        elif self.args.spec_aug == 'specmix':
-            if self.training:
-                x, rn_indices, lam = self.specmix(x)
-
-        # else:
-        #     output_dict = self.base(input, mixup_lambda)
-        #     embedding = output_dict['embedding']
-        #     clipwise_output = self.fc_transfer(embedding)
-
-        #     return output_dict
-
-        # import ipdb; ipdb.set_trace() 
-        # print(x.shape)
-
+        # Base model processing
         x = self.base.conv_block1(x, pool_size=(2, 2), pool_type='avg')
         x = F.dropout(x, p=0.2, training=self.training)
         x = self.base.conv_block2(x, pool_size=(2, 2), pool_type='avg')
@@ -220,16 +260,8 @@ class PANNS_CNN6(nn.Module):
             'embedding': embedding
         }
 
-        if self.training:
-            if self.args.spec_aug in ['mixup', 'specmix']:
-                output_dict.update({
-                    'rn_indices': rn_indices,
-                    'mixup_lambda': lam
-                })
-            elif self.args.spec_aug == 'diffres':
-                output_dict.update({
-                    'diffres_loss': guide_loss
-                })
+        if self.training and aug_output:
+            output_dict.update(aug_output)
 
         return output_dict
 

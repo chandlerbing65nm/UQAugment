@@ -3,8 +3,6 @@
 from .affia3k import get_dataloader as affia3k_loader
 from .uffia import get_dataloader as uffia_loader
 from .mrsffia import get_dataloader as mrsffia_loader
-from .mrsffia_fs import get_dataloader as mrsffia_fs_loader
-from .risc_fs import get_dataloader as risc_fs_loader
 
 def get_dataloaders(args, transform):
     """

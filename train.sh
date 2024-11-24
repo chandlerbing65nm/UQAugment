@@ -59,19 +59,19 @@ cd /users/doloriel/work/Repo/UWAC
 #     --fmax 128000 \
 
 ############################ MRS-FFIA ############################
-# python train.py \
-#     --batch_size 64 \
-#     --max_epoch 100 \
-#     --wandb_mode "offline" \
-#     --dataset mrsffia_fs \
-#     --data_path /scratch/project_465001389/chandler_scratch/Datasets/mrsffia \
-#     --num_classes 4 \
-#     --sample_rate 22050 \
-#     --window_size 1024 \
-#     --hop_size 512 \
-#     --mel_bins 64 \
-#     --model_name "panns_cnn6" \
-#     --spec_aug "specmix" \
-#     --fmin 1 \
-#     --fmax 14000 \
-#     --target_duration 3 \
+python train.py \
+    --batch_size 64 \
+    --max_epoch 100 \
+    --wandb_mode "offline" \
+    --dataset mrsffia \
+    --data_path /scratch/project_465001389/chandler_scratch/Datasets/mrsffia \
+    --num_classes 4 \
+    --sample_rate 22050 \
+    --window_size 1024 \
+    --hop_size 512 \
+    --mel_bins 64 \
+    --model_name "panns_cnn6" \
+    --spec_aug "specmix" \
+    --fmin 1 \
+    --fmax 14000 \
+    --target_duration 3 \

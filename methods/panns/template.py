@@ -360,8 +360,9 @@ class PANNS_RESNET22(nn.Module):
 
 class PANNS_MOBILENETV1(nn.Module):
     def __init__(self, sample_rate, window_size, hop_size, mel_bins, fmin, 
-                 fmax, num_classes, freeze_base=False
-                 ):
+                 fmax, num_classes, frontend='logmel', batch_size=200,
+                 freeze_base=False, device=None, args=None):
+
         """Classifier for a new task using pretrained Cnn6 as a sub-module."""
         super(PANNS_MOBILENETV1, self).__init__()
         audioset_classes_num = 527
@@ -372,6 +373,17 @@ class PANNS_MOBILENETV1(nn.Module):
         ref = 1.0
         amin = 1e-10
         top_db = None
+
+        self.frontend = frontend
+        self.sample_rate = sample_rate
+        self.window_size = window_size
+        self.hop_size = hop_size
+        self.mel_bins = mel_bins
+        self.fmin = fmin
+        self.fmax = fmax
+        self.num_classes = num_classes
+        self.args = args
+        self.duration = args.target_duration
 
         # Step 1: Create base Cnn6 instance (original architecture)
         self.base = MobileNetV1(sample_rate, window_size, hop_size, mel_bins, fmin, 
@@ -388,8 +400,19 @@ class PANNS_MOBILENETV1(nn.Module):
             n_mels=mel_bins, fmin=fmin, fmax=fmax, ref=ref, amin=amin, top_db=top_db, 
             freeze_parameters=True)
 
+        # SpecAugmenter
+        self.spec_augmenter = SpecAugmenter(
+            sample_rate=sample_rate,
+            hop_size=hop_size,
+            duration=self.duration,
+            mel_bins=mel_bins,
+            args=args
+        )
+
         # Transfer to another task layer
         self.fc_transfer = nn.Linear(1024, num_classes, bias=True)  # Assuming 512 is embedding size
+        
+        self.bn = nn.BatchNorm2d(mel_bins)
         
         if freeze_base:
             # Freeze AudioSet pretrained layers
@@ -442,13 +465,40 @@ class PANNS_MOBILENETV1(nn.Module):
         
     def forward(self, input, mixup_lambda=None):
         """Input: (batch_size, data_length)"""
-        output_dict = self.base(input, mixup_lambda)
-        embedding = output_dict['embedding']
 
+        x = self.spectrogram_extractor(input)  # (batch, time_steps, freq_bins)
+        x = self.logmel_extractor(x)  # (batch, time_steps, mel_bins)
+
+        # Precomputed features alignment and normalization
+        x = x.transpose(1, 3)  # Align dimensions for the base model
+        x = self.bn(x)         # Apply batch normalization
+        x = x.transpose(1, 3)
+
+        # Apply SpecAugmentations
+        self.spec_augmenter.training = self.training  # Update training state
+        x, aug_output = self.spec_augmenter(x)
+
+        x = self.base.features(x)
+        x = torch.mean(x, dim=3)
+
+        (x1, _) = torch.max(x, dim=2)
+        x2 = torch.mean(x, dim=2)
+        x = x1 + x2
+        x = F.dropout(x, p=0.5, training=self.training)
+        x = F.relu_(self.base.fc1(x))
+        embedding = F.dropout(x, p=0.5, training=self.training)
         clipwise_output = self.fc_transfer(embedding)
-        output_dict['clipwise_output'] = clipwise_output
+
+        output_dict = {
+            'clipwise_output': clipwise_output,
+            'embedding': embedding
+        }
+
+        if self.training and aug_output:
+            output_dict.update(aug_output)
 
         return output_dict
+
 
 class PANNS_WAVEGRAM_CNN14(nn.Module):
     def __init__(self, sample_rate, window_size, hop_size, mel_bins, fmin, 

@@ -10,7 +10,7 @@
 #SBATCH --partition=standard-g            
 #SBATCH --time=24:00:00           
 #SBATCH --account=project_465001389
-#SBATCH --output=/users/doloriel/work/slurm/mrsffia/cnn6-specmix2-lumi.out
+#SBATCH --output=/users/doloriel/work/slurm/mrsffia/mobilenetv1-specmix2-lumi.out
 
 
 # fma
@@ -70,8 +70,8 @@ python train.py \
     --window_size 1024 \
     --hop_size 512 \
     --mel_bins 64 \
-    --model_name "panns_cnn6" \
-    --spec_aug "specmix" \
+    --model_name "panns_mobilenetv1" \
+    --spec_aug "fma" \
     --fmin 1 \
     --fmax 14000 \
     --target_duration 3 \

@@ -88,15 +88,6 @@ class SpecAugmenter(nn.Module):
             if self.training:
                 x = self.specaugment(x)
 
-        elif spec_aug == 'mixup':
-            if self.training:
-                bs = x.size(0)
-                rn_indices, lam = mixup(bs, 0.4)
-                lam = lam.to(x.device)
-                x = x * lam.view(bs, 1, 1, 1) + x[rn_indices] * (1. - lam.view(bs, 1, 1, 1))
-                output_dict['rn_indices'] = rn_indices
-                output_dict['mixup_lambda'] = lam
-
         elif spec_aug == 'specmix':
             if self.training:
                 x, rn_indices, lam = self.specmix(x)

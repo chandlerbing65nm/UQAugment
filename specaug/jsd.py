@@ -145,7 +145,7 @@ if __name__ == "__main__":
     args.batch_size = 200
     args.sample_rate = 22050
     args.target_duration = 3
-    args.spec_aug = 'fma'  # Choose the augmentation method ('fma', 'diffres', etc.)
+    args.spec_aug = 'diffres'  # Choose the augmentation method ('fma', 'diffres', etc.)
 
     # Initialize data loaders
     train_dataset, train_loader, val_dataset, val_loader = get_dataloaders(args, transform)

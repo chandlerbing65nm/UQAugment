@@ -52,16 +52,14 @@ class DiffRes(Base):
         ret["resolution_enc"] = mean_pos_enc
         ret["mean"] = mean_feature
         ret["maxpool"] = max_pool_feature
-        ret["feature"] = torch.cat(
+        ret["features"] = torch.cat(
             [
                 mean_feature.unsqueeze(1),
                 max_pool_feature.unsqueeze(1),
                 mean_pos_enc.unsqueeze(1),
             ],
             dim=1,
-        )
-        ret["features"] = ret["feature"].mean(dim=1).squeeze(1)
-
+        ).mean(dim=1).squeeze(1)
         
         ret["guide_loss"], ret["activeness"] = self.guide_loss(
             x, importance_score=score

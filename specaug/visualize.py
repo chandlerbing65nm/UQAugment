@@ -87,7 +87,7 @@ class SpecAugmenter(nn.Module):
             x = x.squeeze(1)
             ret = self.diffres(x)
             guide_loss = ret["guide_loss"]
-            x = ret["features"].unsqueeze(1)
+            x = ret["mean"].unsqueeze(1) # use mean for visualization of spectrogram
             output_dict['diffres_loss'] = guide_loss
 
         elif spec_aug == 'fma':

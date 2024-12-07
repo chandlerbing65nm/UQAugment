@@ -187,7 +187,7 @@ if __name__ == "__main__":
     num_batches = 0
 
     # Process all batches
-    for batch in val_loader:
+    for batch in train_loader:
         inputs = batch['waveform'].to(device)  # Ensure data is on the same device
 
         # Apply spectrogram and log-mel extraction

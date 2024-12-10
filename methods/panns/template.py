@@ -779,7 +779,7 @@ class PANNS_MOBILENETV2(nn.Module):
         (x1, _) = torch.max(x, dim=2)
         x2 = torch.mean(x, dim=2)
         x = x1 + x2
-        x = F.dropout(x, p=0.5, training=self.training)
+        # x = F.dropout(x, p=0.5, training=self.training)
         x = F.relu_(self.base.fc1(x))
         embedding = F.dropout(x, p=0.5, training=self.training)
         clipwise_output = self.fc_transfer(embedding)

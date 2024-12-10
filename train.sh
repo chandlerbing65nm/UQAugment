@@ -10,7 +10,7 @@
 #SBATCH --partition=standard-g            
 #SBATCH --time=24:00:00           
 #SBATCH --account=project_465001389
-#SBATCH --output=/users/doloriel/work/slurm/uffia/ast-specmix2-lumi.out
+#SBATCH --output=/users/doloriel/work/slurm/uffia/mobilenetv2-specmix2-lumi.out
 
 
 # fma
@@ -53,7 +53,7 @@ python train.py \
     --window_size 2048 \
     --hop_size 1024 \
     --mel_bins 64 \
-    --model_name "ast" \
+    --model_name "panns_mobilenetv1" \
     --spec_aug "specmix" \
     --fmin 1 \
     --fmax 128000 \

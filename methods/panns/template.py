@@ -398,7 +398,7 @@ class PANNS_CNN14(nn.Module):
         x = F.dropout(x, p=0.2, training=self.training)
         x = self.base.conv_block5(x, pool_size=(2, 2), pool_type='avg')
         x = F.dropout(x, p=0.2, training=self.training)
-        x = self.base.conv_block6(x, pool_size=(2, 2), pool_type='avg')
+        x = self.base.conv_block6(x, pool_size=(1, 1), pool_type='avg')
         x = F.dropout(x, p=0.2, training=self.training)
         x = torch.mean(x, dim=3)
 

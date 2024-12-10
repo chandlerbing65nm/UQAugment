@@ -10,14 +10,13 @@
 #SBATCH --partition=standard-g            
 #SBATCH --time=24:00:00           
 #SBATCH --account=project_465001389
-#SBATCH --output=/users/doloriel/work/slurm/mrsffia/mobilenetv1-mixup2-lumi.out
+#SBATCH --output=/users/doloriel/work/slurm/uffia/mobilenetv2-diffres2-lumi.out
 
 
 # fma
 # diffres
 # specaugment
 # specmix
-# mixup
 
 # Load necessary modules (if required)
 conda init
@@ -25,39 +24,40 @@ conda activate uwac
 cd /users/doloriel/work/Repo/UWAC
 
 ############################ AFFIA3K ############################
-python train.py \
-    --batch_size 200 \
-    --max_epoch 500 \
-    --wandb_mode "offline" \
-    --dataset affia3k \
-    --data_path /scratch/project_465001389/chandler_scratch/Datasets/affia3k \
-    --num_classes 4 \
-    --sample_rate 128000 \
-    --window_size 2048 \
-    --hop_size 1024 \
-    --mel_bins 64 \
-    --target_duration 2 \
-    --model_name "panns_cnn6" \
-    --spec_aug "fma" \
-    --fmin 50 \
-    --fmax None
-
-############################ UFFIA ############################
 # python train.py \
 #     --batch_size 200 \
 #     --max_epoch 500 \
 #     --wandb_mode "offline" \
-#     --dataset uffia \
-#     --data_path /scratch/project_465001389/chandler_scratch/Datasets/uffia \
+#     --dataset affia3k \
+#     --data_path /scratch/project_465001389/chandler_scratch/Datasets/affia3k \
 #     --num_classes 4 \
-#     --sample_rate 64000 \
+#     --sample_rate 128000 \
 #     --window_size 2048 \
 #     --hop_size 1024 \
 #     --mel_bins 64 \
 #     --model_name "panns_cnn6" \
-#     --spec_aug "fma" \
-#     --fmin 1 \
-#     --fmax 128000 \
+#     --spec_aug "diffres" \
+#     --fmin 50 \
+#     --target_duration 2
+
+
+############################ UFFIA ############################
+python train.py \
+    --batch_size 200 \
+    --max_epoch 500 \
+    --wandb_mode "offline" \
+    --dataset uffia \
+    --data_path /scratch/project_465001389/chandler_scratch/Datasets/uffia \
+    --num_classes 4 \
+    --sample_rate 64000 \
+    --window_size 2048 \
+    --hop_size 1024 \
+    --mel_bins 64 \
+    --model_name "panns_mobilenetv2" \
+    --spec_aug "diffres" \
+    --fmin 1 \
+    --fmax 128000 \
+    --target_duration 2
 
 ############################ MRS-FFIA ############################
 # python train.py \

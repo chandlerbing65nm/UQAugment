@@ -140,25 +140,52 @@ if __name__ == "__main__":
 
     transform = get_transforms(args)
 
-    # Set arguments
-    args.data_path = '/scratch/project_465001389/chandler_scratch/Datasets/mrsffia'
-    args.dataset = 'mrsffia' 
+    # Set arguments for MRS-FFIA
+    # args.data_path = '/scratch/project_465001389/chandler_scratch/Datasets/mrsffia'
+    # args.dataset = 'mrsffia' 
+    # args.batch_size = 200
+    # args.sample_rate = 22050
+    # args.target_duration = 3
+    # args.spec_aug = 'fma'  # Choose the augmentation method ('fma', 'diffres', etc.)
+    # train_dataset, train_loader, val_dataset, val_loader = get_dataloaders(args, transform)
+    # window_size = 1024
+    # hop_size = 512
+    # sample_rate = args.sample_rate
+    # mel_bins = 64
+    # fmin = 1
+    # fmax = args.sample_rate // 2
+
+    # # Set arguments for AFFIA3k
+    # args.data_path = '/scratch/project_465001389/chandler_scratch/Datasets/affia3k'
+    # args.dataset = 'affia3k' 
+    # args.batch_size = 200
+    # args.sample_rate = 128000
+    # args.target_duration = 2
+    # args.spec_aug = 'fma'  # Choose the augmentation method ('specmix', etc.)
+    # train_dataset, train_loader, val_dataset, val_loader = get_dataloaders(args, transform)
+    # window_size = 2048
+    # hop_size = 1024
+    # sample_rate = args.sample_rate
+    # mel_bins = 64
+    # fmin = 50
+    # fmax = None
+
+    # Set arguments for UFFIA
+    args.data_path = '/scratch/project_465001389/chandler_scratch/Datasets/uffia'
+    args.dataset = 'uffia'
     args.batch_size = 200
-    args.sample_rate = 22050
-    args.target_duration = 3
-    args.spec_aug = 'diffres'  # Choose the augmentation method ('fma', 'diffres', etc.)
-
-    # Initialize data loaders
+    args.sample_rate = 64000
+    args.target_duration = 2
+    args.spec_aug = 'specmix'  # Choose the augmentation method ('fma', 'diffres', etc.)
     train_dataset, train_loader, val_dataset, val_loader = get_dataloaders(args, transform)
-
-    # Initialize the spectrogram and log-mel extractor
-    window_size = 1024
-    hop_size = 512
+    window_size = 2048
+    hop_size = 1024
     sample_rate = args.sample_rate
     mel_bins = 64
-
     fmin = 1
-    fmax = sample_rate // 2
+    fmax = 128000
+
+
     amin = 1e-10
     ref = 1.0
     top_db = None

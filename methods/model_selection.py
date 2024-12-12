@@ -20,7 +20,7 @@ def get_model(args):
             args=args
         )
         model.load_from_pretrain("/scratch/project_465001389/chandler_scratch/Projects/UWAC/weights/Cnn6_mAP=0.343.pth")
-    if args.model_name == 'panns_cnn14':
+    elif args.model_name == 'panns_cnn14':
         model = PANNS_CNN14(
             sample_rate=args.sample_rate, 
             window_size=args.window_size, 

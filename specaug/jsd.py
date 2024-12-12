@@ -175,7 +175,7 @@ if __name__ == "__main__":
     args.batch_size = 200
     args.sample_rate = 64000
     args.target_duration = 2
-    args.spec_aug = 'specaugment'  # Choose the augmentation method ('fma', 'diffres', etc.)
+    args.spec_aug = 'diffres'  # Choose the augmentation method ('fma', 'diffres', etc.)
     train_dataset, train_loader, val_dataset, val_loader = get_dataloaders(args, transform)
     window_size = 2048
     hop_size = 1024

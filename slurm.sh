@@ -1,5 +1,18 @@
 #!/bin/bash
 
+#SBATCH --job-name=audio_classification         
+#SBATCH --ntasks=1                 
+#SBATCH --cpus-per-task=4         
+#SBATCH --ntasks-per-node=1
+#SBATCH --mem-per-cpu=8G
+#SBATCH --gpus-per-node=1
+#SBATCH --nodes=1                                  
+#SBATCH --partition=small-g            
+#SBATCH --time=24:00:00           
+#SBATCH --account=project_465001389
+#SBATCH --output=/users/doloriel/work/Repo/FrameMixer/logs/affia3k/panns_mobilenetv2/specaugment.out
+
+
 # fma
 # diffres
 # specaugment
@@ -18,7 +31,7 @@ python train.py \
     --dataset affia3k \
     --data_path /scratch/project_465001389/chandler_scratch/Datasets/affia3k \
     --model_name "panns_mobilenetv2" \
-    --spec_aug "fma" \
+    --spec_aug "specaugment" \
     --num_classes 4 \
     --sample_rate 128000 \
     --window_size 2048 \

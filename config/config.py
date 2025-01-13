@@ -53,4 +53,8 @@ def parse_args():
     logging_group.add_argument('--wandb_mode', type=str, default='offline', help='WandB mode (online/offline)')
     logging_group.add_argument('--wandb_project', type=str, default='affia3k', help='WandB project name')
 
+    # Testing Parameters
+    testing_group = parser.add_argument_group('Testing Parameters')
+    testing_group.add_argument('--checkpoint', type=str, help='checkpoint path for loaded trained model weights')
+
     return parser.parse_args()

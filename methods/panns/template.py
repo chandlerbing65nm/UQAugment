@@ -49,7 +49,7 @@ class SpecAugmenter(nn.Module):
         self.diffres = DiffRes(
             in_t_dim=int((sample_rate / hop_size) * duration) + 1,
             in_f_dim=mel_bins,
-            dimension_reduction_rate=0.10,
+            dimension_reduction_rate=0.60,
             learn_pos_emb=False
         )
 

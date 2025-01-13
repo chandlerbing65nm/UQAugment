@@ -5,8 +5,10 @@ misc/
 plots/
 wandb/
 weights/
+logs/
 __pycache__/
 *.pkl
 *.pth
 *.done
 *.zip
+*.out

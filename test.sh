@@ -1,18 +1,5 @@
 #!/bin/bash
 
-#SBATCH --job-name=audio_classification         
-#SBATCH --ntasks=1                 
-#SBATCH --cpus-per-task=4         
-#SBATCH --ntasks-per-node=1
-#SBATCH --mem-per-cpu=8G
-#SBATCH --gpus-per-node=1
-#SBATCH --nodes=1                                  
-#SBATCH --partition=standard-g            
-#SBATCH --time=24:00:00           
-#SBATCH --account=project_465001389
-#SBATCH --output=/users/doloriel/work/Repo/FrameMixer/logs/affia3k/panns_cnn6/fma.out
-
-
 # fma
 # diffres
 # specaugment
@@ -24,19 +11,18 @@ conda activate framemixer
 cd /users/doloriel/work/Repo/FrameMixer
 
 ############################ AFFIA3K ############################
-python train.py \
+python test.py \
     --batch_size 200 \
-    --max_epoch 500 \
-    --wandb_mode "offline" \
     --dataset affia3k \
     --data_path /scratch/project_465001389/chandler_scratch/Datasets/affia3k \
+    --checkpoint /scratch/project_465001389/chandler_scratch/Projects/FrameMixer/checkpoints/affia3k_logmel_panns_cnn6_fma_best_map_dur-2.0_sr-128000_win-2048_hop-1024_mel-64_fmin-50_fmax-none_cls-4_seed-20_bs-200_epoch-500_loss-ce.pth \
+    --model_name "panns_cnn6" \
+    --spec_aug "fma" \
     --num_classes 4 \
     --sample_rate 128000 \
     --window_size 2048 \
     --hop_size 1024 \
     --mel_bins 64 \
-    --model_name "panns_cnn6" \
-    --spec_aug "fma" \
     --fmin 50 \
     --target_duration 2
 

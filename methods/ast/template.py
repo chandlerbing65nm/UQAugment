@@ -142,6 +142,9 @@ class SpecAugmenter(nn.Module):
                 output_dict['mixup_lambda'] = lam
             x = x.squeeze(1)
 
+        else:
+            x = x.squeeze(1)
+            
         # Always return the transformed features
         output_dict['x'] = x
         return output_dict

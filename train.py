@@ -28,9 +28,9 @@ from pprint import pprint
 ssl._create_default_https_context = ssl._create_unverified_context
 
 # Set WandB directories
-os.environ['WANDB_CONFIG_DIR'] = '/scratch/project_465001389/chandler_scratch/Projects/UWAC/wandb'
-os.environ['WANDB_DIR'] = '/scratch/project_465001389/chandler_scratch/Projects/UWAC/wandb'
-os.environ['WANDB_CACHE_DIR'] = '/scratch/project_465001389/chandler_scratch/Projects/UWAC/wandb'
+os.environ['WANDB_CONFIG_DIR'] = '/scratch/project_465001389/chandler_scratch/Projects/FrameMixer/wandb'
+os.environ['WANDB_DIR'] = '/scratch/project_465001389/chandler_scratch/Projects/FrameMixer/wandb'
+os.environ['WANDB_CACHE_DIR'] = '/scratch/project_465001389/chandler_scratch/Projects/FrameMixer/wandb'
 
 def set_seed(seed):
     torch.manual_seed(seed)

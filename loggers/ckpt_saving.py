@@ -4,7 +4,7 @@ import os
 import torch
 
 def save_checkpoint(model, args, best_val_map, best_val_acc, current_val_map, current_val_acc):
-    ckpt_dir = f'/scratch/project_465001389/chandler_scratch/Projects/UWAC/checkpoints/{args.frontend}/{args.loss}'
+    ckpt_dir = f'/scratch/project_465001389/chandler_scratch/Projects/FrameMixer/checkpoints/{args.frontend}/{args.loss}'
     os.makedirs(ckpt_dir, exist_ok=True)
 
     # Save the best model based on validation accuracy

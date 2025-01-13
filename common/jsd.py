@@ -115,9 +115,9 @@ def main(args):
             x_augm = model_augm(inputs)['augmented']
             x_orig = model_orig(inputs)['augmented']  # Non-augmented model output
 
-            # import ipdb; ipdb.set_trace() 
-            # print(x_augm.shape)
-            # print(x_orig.shape)
+            import ipdb; ipdb.set_trace() 
+            print(x_augm.shape)
+            print(x_orig.shape)
 
         # Compute the Jensen-Shannon Divergence
         with torch.no_grad():

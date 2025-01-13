@@ -1,194 +1,121 @@
+import os
+import random
 import torch
-import torch.nn as nn
 import matplotlib.pyplot as plt
-import numpy as np
-from datasets.dataset_selection import get_dataloaders
+from tqdm import tqdm
 from config.config import parse_args
+from datasets.dataset_selection import get_dataloaders
 from transforms.audio_transforms import get_transforms
-from torchlibrosa.stft import Spectrogram, LogmelFilterBank
-from torchlibrosa.augmentation import SpecAugmentation
+from methods.model_selection import get_model
+from argparse import Namespace
 
-from methods.panns.pytorch_utils import *
-from methods.panns.models import *
-
-from specaug.diffres.frontend import DiffRes
-from specaug.fma.frontend import FMA
-from specaug.specmix.frontend import SpecMix
-
-def plot_feature_map(feature, title, filename, sample_rate, mel_bins):
+def set_seed(seed):
     """
-    Plot the feature map with the frames on the x-axis and feature dimensions starting from 50 Hz.
+    Set the random seed for reproducibility.
     """
-    plt.figure(figsize=(12, 8))
+    import numpy as np
+    import random
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
-    # Transpose the feature map to have frames on the x-axis and frequency on the y-axis
-    feature = feature.T  # Now shape is [feat_dim, frames]
+def save_spectrogram_figure(spectrogram, save_path):
+    """
+    Save a spectrogram as a figure.
     
-    # Plot with a gradient color scheme
-    plt.imshow(feature.cpu().numpy(), aspect='auto', cmap='viridis', origin='lower')
-    plt.colorbar()
-    
-    # Set axis labels
-    plt.title(title)
-    plt.xlabel('Frames')
-    plt.ylabel('Frequency (Hz)')
-    
-    # Calculate the frequency labels based on mel bins and set them starting from 50 Hz
-    freq_bins = np.linspace(50, sample_rate // 2, mel_bins)
-    plt.yticks(np.linspace(0, feature.shape[0] - 1, num=6), [f"{int(freq)} Hz" for freq in np.linspace(50, sample_rate // 2, num=6)])
-
+    Args:
+        spectrogram (torch.Tensor): Spectrogram tensor of shape [1, frames, frequency].
+        save_path (str): Path to save the figure.
+    """
+    spectrogram_np = spectrogram.squeeze(0).cpu().numpy()  # Remove batch dimension
+    plt.figure(figsize=(10, 4))
+    plt.imshow(spectrogram_np.T, aspect='auto', origin='lower', cmap='viridis')  # Transpose for correct axis
+    plt.colorbar(label="Intensity")
+    plt.xlabel("Frames")
+    plt.ylabel("Frequency")
+    plt.title("Spectrogram")
     plt.tight_layout()
-    plt.savefig(filename)
+    plt.savefig(save_path)
     plt.close()
 
-class SpecAugmenter(nn.Module):
-    def __init__(self, sample_rate, hop_size, duration, mel_bins, args):
-        super(SpecAugmenter, self).__init__()
-
-        self.args = args
-        self.training = True  # Will be updated based on the model's training state
-
-        # SpecAugment
-        self.specaugment = SpecAugmentation(
-            time_drop_width=64,
-            time_stripes_num=2,
-            freq_drop_width=8,
-            freq_stripes_num=2
-        )
-
-        # DiffRes
-        self.diffres = DiffRes(
-            in_t_dim=int((sample_rate / hop_size) * duration) + 1,
-            in_f_dim=mel_bins,
-            dimension_reduction_rate=0.60,
-            learn_pos_emb=False
-        )
-
-        # SpecMix
-        self.specmix = SpecMix(
-            prob=0.5,
-            min_band_size=mel_bins // 8,
-            max_band_size=mel_bins // 2,
-            max_frequency_bands=2,
-            max_time_bands=2
-        )
-
-        # FMA
-        self.fma = FMA(
-            in_t_dim=int((sample_rate / hop_size) * duration) + 1,
-            in_f_dim=mel_bins
-        )
-
-    def forward(self, x):
-        spec_aug = self.args.spec_aug
-        output_dict = {}
-
-        if spec_aug == 'diffres':
-            x = x.squeeze(1)
-            ret = self.diffres(x)
-            guide_loss = ret["guide_loss"]
-            x = ret["mean"].unsqueeze(1) # use mean for visualization of spectrogram
-            output_dict['diffres_loss'] = guide_loss
-
-        elif spec_aug == 'fma':
-            x = x.squeeze(1)
-            x = self.fma(x)
-            x = x.unsqueeze(1)
-
-        elif spec_aug == 'specaugment':
-            x = self.specaugment(x)
-
-        elif spec_aug == 'specmix':
-            x, rn_indices, lam = self.specmix(x)
-            output_dict['rn_indices'] = rn_indices
-            output_dict['mixup_lambda'] = lam
-
-        return x, output_dict
-
-if __name__ == "__main__":
+def main(args, sample_index):
     # Device configuration
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Parse arguments and get transforms
-    args = parse_args()
+    # Set the random seed for reproducibility
+    set_seed(args.seed)
+
+    # Get transforms and dataloaders
     transform = get_transforms(args)
+    _, train_loader, _, _ = get_dataloaders(args, transform)
 
-    # Set arguments
-    args.data_path = '/scratch/project_465001389/chandler_scratch/Datasets/mrsffia'
-    args.dataset = 'mrsffia' 
-    args.batch_size = 6
-    args.sample_rate = 22050
-    args.target_duration = 3
-    args.spec_aug = 'diffres'  # Choose the augmentation method ('fma', 'diffres', etc.)
+    # Initialize augmented and non-augmented models
+    model_augm = get_model(args).to(device)
+    model_augm.train()
 
-    # Initialize data loaders
-    train_dataset, train_loader, val_dataset, val_loader = get_dataloaders(args, transform)
+    non_aug_args = Namespace(**vars(args))
+    non_aug_args.spec_aug = None
+    model_orig = get_model(non_aug_args).to(device)
+    model_orig.train()
 
-    # Initialize the spectrogram and log-mel extractor
-    window_size = 1024
-    hop_size = 512
-    sample_rate = args.sample_rate
-    mel_bins = 64
-    fmin = 1
-    fmax = sample_rate // 2
-    amin = 1e-10
-    ref = 1.0
-    top_db = None
-    window = 'hann'
-    center = True
-    pad_mode = 'reflect'
+    # Create output directory
+    os.makedirs("figures", exist_ok=True)
 
-    spectrogram_extractor = Spectrogram(
-        n_fft=window_size, hop_length=hop_size, win_length=window_size,
-        window=window, center=center, pad_mode=pad_mode, freeze_parameters=True
-    ).to(device)
+    random_idx = None  # Variable to store the random index for consistency
 
-    logmel_extractor = LogmelFilterBank(
-        sr=sample_rate, n_fft=window_size, n_mels=mel_bins, fmin=fmin,
-        fmax=fmax, ref=ref, amin=amin, top_db=top_db, freeze_parameters=True
-    ).to(device)
+    for batch in train_loader:
+        inputs = batch['waveform'].to(device)
 
-    bn = nn.BatchNorm2d(mel_bins).to(device)
-
-    # Get a batch of data
-    for batch in val_loader:
-        inputs = batch['waveform'].to(device)  # Ensure data is on the same device
-
-        # Apply spectrogram and log-mel extraction
+        # Generate spectrograms
         with torch.no_grad():
-            x = spectrogram_extractor(inputs)  # Shape: (batch, 1, time_steps, freq_bins)
-            x = logmel_extractor(x)  # Shape: (batch, 1, time_steps, mel_bins)
+            x_augm = model_augm(inputs)['augmented']  # Shape: [batch, 1, frames, frequency]
+            x_orig = model_orig(inputs)['augmented']  # Shape: [batch, 1, frames, frequency]
 
-            # Apply batch normalization
-            x = x.transpose(1, 3)  # Shape: (batch, mel_bins, time_steps, 1)
-            x = bn(x)   # Apply batch normalization
-            x = x.transpose(1, 3)  # Shape: (batch, 1, time_steps, mel_bins)
+        # Validate the input index
+        if sample_index < 0 or sample_index >= x_augm.size(0):
+            raise ValueError(f"Invalid sample index: {sample_index}. Must be between 0 and {x_augm.size(0) - 1}.")
 
-        # Compute duration
-        batch_size, _, seq_len, feat_dim = x.size()
-        duration = args.target_duration
+        spectrogram_augm = x_augm[sample_index]
+        spectrogram_orig = x_orig[sample_index]
 
-        # Initialize SpecAugmenter
-        spec_augmenter = SpecAugmenter(sample_rate, hop_size, duration, mel_bins, args).to(device)
-        spec_augmenter.train()  # Set to correct mode
+        # Save figures
+        save_path_augm = f"figures/{args.dataset}_{args.spec_aug}_augm_{sample_index}idx.png"
+        save_path_orig = f"figures/{args.dataset}_orig_{sample_index}idx.png"
 
-        # Apply the augmentation
-        with torch.no_grad():
-            x_input = x.clone()
-            x_aug, output_dict = spec_augmenter(x_input)
+        save_spectrogram_figure(spectrogram_augm, save_path_augm)
+        save_spectrogram_figure(spectrogram_orig, save_path_orig)
 
-        # Select a random sample from the batch
-        random_sample_idx = np.random.randint(0, x.size(0))
-        input_sample = x[random_sample_idx].squeeze(0).cpu()  # Shape: (time_steps, mel_bins)
-        augmented_sample = x_aug[random_sample_idx].squeeze(0).cpu()  # Shape: (time_steps, mel_bins)
+        print(f"Figures saved: {save_path_augm}, {save_path_orig}")
+        break  # Only process the first batch
 
-        # Plot and save the original input feature map
-        plot_feature_map(input_sample, "Original Feature Map", "original_feature_map.png", sample_rate, mel_bins)
+if __name__ == "__main__":
+    # Parse default arguments
+    args = parse_args()
 
-        # Plot and save the augmented feature map
-        plot_feature_map(augmented_sample, "Augmented Feature Map", "augmented_feature_map.png", sample_rate, mel_bins)
+    # Override some arguments for the script
+    override_args = Namespace(
+        batch_size=200,
+        dataset="affia3k",
+        data_path="/scratch/project_465001389/chandler_scratch/Datasets/affia3k",
+        spec_aug="specaugment", # fma, diffres, specaugment, specmix
+        num_classes=4,
+        sample_rate=128000,
+        window_size=2048,
+        hop_size=1024,
+        mel_bins=64,
+        fmin=50,
+        target_duration=2,
+        seed=42,
+    )
 
-        print("Figures saved: original_feature_map.png and augmented_feature_map.png")
+    # Update the default arguments with the hardcoded overrides
+    for key, value in vars(override_args).items():
+        setattr(args, key, value)
 
-        break # only use one batch
-        
+    # Input sample index
+    sample_index = 167  # Replace with your desired index
+
+    # Run the main function
+    main(args, sample_index)

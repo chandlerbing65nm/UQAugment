@@ -107,7 +107,7 @@ class SpecAugmenter(nn.Module):
             x = x.squeeze(1)  # from (B, 1, T, F) to (B, T, F)
             ret = self.diffres(x)
             guide_loss = ret["guide_loss"]
-            x = ret["features"]
+            x = ret["feature"]
             # Add guide_loss to output
             output_dict['guide_loss'] = guide_loss
 

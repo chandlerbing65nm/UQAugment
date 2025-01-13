@@ -17,8 +17,8 @@ python train.py \
     --wandb_mode "offline" \
     --dataset affia3k \
     --data_path /scratch/project_465001389/chandler_scratch/Datasets/affia3k \
-    --model_name "panns_mobilenetv2" \
-    --spec_aug "fma" \
+    --model_name "panns_cnn6" \
+    --spec_aug "diffres" \
     --num_classes 4 \
     --sample_rate 128000 \
     --window_size 2048 \

@@ -27,6 +27,10 @@ from pprint import pprint
 # Disable SSL verification
 ssl._create_default_https_context = ssl._create_unverified_context
 
+import warnings
+
+warnings.filterwarnings("ignore", category=UserWarning)
+
 # Set WandB directories
 os.environ['WANDB_CONFIG_DIR'] = '/scratch/project_465001389/chandler_scratch/Projects/FrameMixer/wandb'
 os.environ['WANDB_DIR'] = '/scratch/project_465001389/chandler_scratch/Projects/FrameMixer/wandb'

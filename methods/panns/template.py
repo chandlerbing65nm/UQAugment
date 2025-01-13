@@ -76,7 +76,7 @@ class SpecAugmenter(nn.Module):
             x = x.squeeze(1)
             ret = self.diffres(x)
             guide_loss = ret["guide_loss"]
-            x = ret["features"].unsqueeze(1)
+            x = ret["feature"].unsqueeze(1)
             output_dict['diffres_loss'] = guide_loss
 
         elif spec_aug == 'fma':
@@ -226,6 +226,7 @@ class PANNS_CNN6(nn.Module):
         # Apply SpecAugmentations
         self.spec_augmenter.training = self.training  # Update training state
         x, aug_output = self.spec_augmenter(x)
+        x_aug = x
 
         # Base model processing
         x = self.base.conv_block1(x, pool_size=(2, 2), pool_type='avg')
@@ -248,7 +249,8 @@ class PANNS_CNN6(nn.Module):
 
         output_dict = {
             'clipwise_output': clipwise_output,
-            'embedding': embedding
+            'embedding': embedding,
+            'augmented': x_aug
         }
 
         if self.training and aug_output:

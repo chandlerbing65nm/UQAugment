@@ -16,6 +16,11 @@ from datasets.dataset_selection import get_dataloaders
 # Disable SSL verification
 ssl._create_default_https_context = ssl._create_unverified_context
 
+import warnings
+
+warnings.filterwarnings("ignore", category=UserWarning)
+
+
 def load_checkpoint(model, checkpoint_path):
     """Load model weights from the checkpoint."""
     if os.path.isfile(checkpoint_path):

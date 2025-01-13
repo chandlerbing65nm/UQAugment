@@ -23,7 +23,7 @@ def parse_args():
 
     # Model Parameters
     model = parser.add_argument_group('Model Parameters')
-    model.add_argument('--model_name', type=str, default='cnn10', help='Name of the model to use')
+    model.add_argument('--model_name', type=str, default='panns_cnn6', help='Name of the model to use')
     model.add_argument('--frontend', type=str, default='logmel', help='Frontend type (logmel, mixup, diffres)')
 
     # Data Processing Parameters

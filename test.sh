@@ -15,9 +15,9 @@ python test.py \
     --batch_size 200 \
     --dataset affia3k \
     --data_path /scratch/project_465001389/chandler_scratch/Datasets/affia3k \
-    --checkpoint /scratch/project_465001389/chandler_scratch/Projects/FrameMixer/checkpoints/affia3k_logmel_panns_cnn6_fma_best_map_dur-2.0_sr-128000_win-2048_hop-1024_mel-64_fmin-50_fmax-none_cls-4_seed-20_bs-200_epoch-500_loss-ce.pth \
+    --checkpoint /scratch/project_465001389/chandler_scratch/Projects/FrameMixer/checkpoints/affia3k_logmel_panns_cnn6_diffres_best_map_dur-2.0_sr-128000_win-2048_hop-1024_mel-64_fmin-50_fmax-none_cls-4_seed-20_bs-200_epoch-500_loss-ce.pth \
     --model_name "panns_cnn6" \
-    --spec_aug "fma" \
+    --spec_aug "diffres" \
     --num_classes 4 \
     --sample_rate 128000 \
     --window_size 2048 \

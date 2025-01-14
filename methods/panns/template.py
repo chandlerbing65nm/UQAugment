@@ -37,32 +37,37 @@ class SpecAugmenter(nn.Module):
         self.args = args
         self.training = True  # Will be updated based on the model's training state
 
-        # SpecAugment
+        # Parse SpecAugment parameters
+        specaugment_params = list(map(int, args.specaugment_params.split(',')))
         self.specaugment = SpecAugmentation(
-            time_drop_width=64,
-            time_stripes_num=2,
-            freq_drop_width=8,
-            freq_stripes_num=2
+            time_drop_width=specaugment_params[0],
+            time_stripes_num=specaugment_params[1],
+            freq_drop_width=specaugment_params[2],
+            freq_stripes_num=specaugment_params[3]
         )
 
-        # DiffRes
+        # Parse DiffRes parameters
+        diffres_params = args.diffres_params.split(',')
+        dimension_reduction_rate = float(diffres_params[0])
+        learn_pos_emb = diffres_params[1].lower() == 'true'
         self.diffres = DiffRes(
             in_t_dim=int((sample_rate / hop_size) * duration) + 1,
             in_f_dim=mel_bins,
-            dimension_reduction_rate=0.60,
-            learn_pos_emb=False
+            dimension_reduction_rate=dimension_reduction_rate,
+            learn_pos_emb=learn_pos_emb
         )
 
-        # SpecMix
+        # Parse SpecMix parameters
+        specmix_params = list(map(float, args.specmix_params.split(',')))
         self.specmix = SpecMix(
-            prob=0.5,
-            min_band_size=mel_bins // 8,
-            max_band_size=mel_bins // 2,
-            max_frequency_bands=2,
-            max_time_bands=2
+            prob=specmix_params[0],
+            min_band_size=int(specmix_params[1]),
+            max_band_size=int(specmix_params[2]),
+            max_frequency_bands=int(specmix_params[3]),
+            max_time_bands=int(specmix_params[4])
         )
 
-        # FMA
+        # FMA (unchanged)
         self.fma = FMA(
             in_t_dim=int((sample_rate / hop_size) * duration) + 1,
             in_f_dim=mel_bins

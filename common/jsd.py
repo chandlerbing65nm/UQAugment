@@ -115,9 +115,9 @@ def main(args):
             x_augm = model_augm(inputs)['augmented']
             x_orig = model_orig(inputs)['augmented']  # Non-augmented model output
 
-            import ipdb; ipdb.set_trace() 
-            print(x_augm.shape)
-            print(x_orig.shape)
+            # import ipdb; ipdb.set_trace() 
+            # print(x_augm.shape)
+            # print(x_orig.shape)
 
         # Compute the Jensen-Shannon Divergence
         with torch.no_grad():
@@ -143,7 +143,7 @@ if __name__ == "__main__":
         batch_size=200,
         dataset="affia3k",
         data_path="/scratch/project_465001389/chandler_scratch/Datasets/affia3k",
-        spec_aug="diffres", # fma, diffres, specaugment, specmix
+        spec_aug="specmix", # fma, diffres, specaugment, specmix
         num_classes=4,
         sample_rate=128000,
         window_size=2048,

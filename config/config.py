@@ -57,4 +57,15 @@ def parse_args():
     testing_group = parser.add_argument_group('Testing Parameters')
     testing_group.add_argument('--checkpoint', type=str, help='checkpoint path for loaded trained model weights')
 
+    # Ablation Parameters
+    ablation_group = parser.add_argument_group('Ablation Parameters')
+    ablation_group.add_argument('--ablation', action='store_true', help='Enable ablation studies to override default settings')
+    ablation_group.add_argument('--specaugment_params', type=str, default='64,2,8,2', # 32,1,4,1 # 64,2,8,2 # 128,4,16,4
+                                help='Comma-separated values: time_drop_width,time_stripes_num,freq_drop_width,freq_stripes_num')
+    ablation_group.add_argument('--diffres_params', type=str, default='0.60,False', # 0.10,False # 0.60,False # 0.90,False
+                                help='Comma-separated values: dimension_reduction_rate,learn_pos_emb (True/False)')
+    ablation_group.add_argument('--specmix_params', type=str, default='0.5,8,16,2,2', # 0.3,4,8,1,1 # 0.5,8,16,2,2 # 0.7,16,32,4,4
+                                help='Comma-separated values: prob,min_band_size,max_band_size,max_frequency_bands,max_time_bands')
+
+
     return parser.parse_args()

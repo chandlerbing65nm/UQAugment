@@ -5,6 +5,10 @@
 # specaugment
 # specmix
 
+# --specaugment_params '64,2,8,2' \ # 32,1,4,1 # 64,2,8,2 # 128,4,16,4
+# --diffres_params '0.60,False' \ # 0.10,False # 0.60,False # 0.90,False
+# --specmix_params '0.5,8,16,2,2' \ # 0.3,4,8,1,1 # 0.5,8,16,2,2 # 0.7,16,32,4,4
+
 # Load necessary modules (if required)
 conda init
 conda activate framemixer
@@ -25,8 +29,9 @@ python train.py \
     --hop_size 1024 \
     --mel_bins 64 \
     --fmin 50 \
-    --target_duration 2
-
+    --target_duration 2 \
+    --ablation \
+    --diffres_params '0.10,False' \
 
 ############################ UFFIA ############################
 # python train.py \
@@ -36,7 +41,7 @@ python train.py \
 #     --dataset uffia \
 #     --data_path /scratch/project_465001389/chandler_scratch/Datasets/uffia \
 #     --model_name "panns_cnn6" \
-#     --spec_aug "specmix" \
+#     --spec_aug "fma" \
 #     --num_classes 4 \
 #     --sample_rate 64000 \
 #     --window_size 2048 \

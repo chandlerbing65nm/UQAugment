@@ -10,7 +10,7 @@
 #SBATCH --partition=small-g            
 #SBATCH --time=24:00:00           
 #SBATCH --account=project_465001389
-#SBATCH --output=/users/doloriel/work/Repo/FrameMixer/logs/affia3k/panns_cnn6/none.out
+#SBATCH --output=/users/doloriel/work/Repo/FrameMixer/logs/ablation/affia3k/panns_cnn6/specmix-0.3,4,8,1,1.out
 
 
 # fma
@@ -24,10 +24,15 @@
 # panns_cnn6
 # ast
 
+# --specaugment_params '64,2,8,2' \ # 32,1,4,1 # 64,2,8,2 # 128,4,16,4
+# --diffres_params '0.60,False' \ # 0.10,False # 0.60,False # 0.90,False
+# --specmix_params '0.5,8,16,2,2' \ # 0.3,4,8,1,1 # 0.5,8,16,2,2 # 0.7,16,32,4,4
+
 # Load necessary modules (if required)
 conda init
 conda activate framemixer
 cd /users/doloriel/work/Repo/FrameMixer
+
 
 ############################ AFFIA3K ############################
 python train.py \
@@ -37,14 +42,51 @@ python train.py \
     --dataset affia3k \
     --data_path /scratch/project_465001389/chandler_scratch/Datasets/affia3k \
     --model_name "panns_cnn6" \
-    --spec_aug "none" \
+    --spec_aug "specmix" \
     --num_classes 4 \
     --sample_rate 128000 \
     --window_size 2048 \
     --hop_size 1024 \
     --mel_bins 64 \
     --fmin 50 \
-    --target_duration 2
+    --target_duration 2 \
+    --ablation \
+    --specmix_params '0.3,4,8,1,1' \
+
+############################ UFFIA ############################
+# python train.py \
+#     --batch_size 200 \
+#     --max_epoch 500 \
+#     --wandb_mode "offline" \
+#     --dataset uffia \
+#     --data_path /scratch/project_465001389/chandler_scratch/Datasets/uffia \
+#     --model_name "ast" \
+#     --spec_aug "none" \
+#     --num_classes 4 \
+#     --sample_rate 64000 \
+#     --window_size 2048 \
+#     --hop_size 1024 \
+#     --mel_bins 64 \
+#     --fmin 1 \
+#     --fmax 128000 \
+#     --target_duration 2
+
+############################ AFFIA3K ############################
+# python train.py \
+#     --batch_size 200 \
+#     --max_epoch 500 \
+#     --wandb_mode "offline" \
+#     --dataset affia3k \
+#     --data_path /scratch/project_465001389/chandler_scratch/Datasets/affia3k \
+#     --model_name "panns_cnn6" \
+#     --spec_aug "none" \
+#     --num_classes 4 \
+#     --sample_rate 128000 \
+#     --window_size 2048 \
+#     --hop_size 1024 \
+#     --mel_bins 64 \
+#     --fmin 50 \
+#     --target_duration 2
 
 ############################ MRS-FFIA ############################
 # python train.py \
@@ -64,22 +106,4 @@ python train.py \
 #     --fmax 14000 \
 #     --target_duration 3 \
 
-
-############################ UFFIA ############################
-# python train.py \
-#     --batch_size 200 \
-#     --max_epoch 500 \
-#     --wandb_mode "offline" \
-#     --dataset uffia \
-#     --data_path /scratch/project_465001389/chandler_scratch/Datasets/uffia \
-#     --model_name "panns_cnn6" \
-#     --spec_aug "specmix" \
-#     --num_classes 4 \
-#     --sample_rate 64000 \
-#     --window_size 2048 \
-#     --hop_size 1024 \
-#     --mel_bins 64 \
-#     --fmin 1 \
-#     --fmax 128000 \
-#     --target_duration 2
 

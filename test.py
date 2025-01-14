@@ -33,9 +33,19 @@ def load_checkpoint(model, checkpoint_path):
 
 def save_results(args, test_acc, test_map, test_f1):
     """Save test results to a file."""
+    # Base results directory
     results_dir = 'results/'
+
+    # If ablation is enabled, create a subdirectory for ablations
+    if args.ablation:
+        save_dir = os.path.join(results_dir, f'ablation/{args.spec_aug}')
+        os.makedirs(save_dir, exist_ok=True)
+    else:
+        save_dir = results_dir
+
     os.makedirs(results_dir, exist_ok=True)
 
+    # Construct a formatted string for additional arguments to include in the filename
     params_str = (
         f"dur-{args.target_duration}_sr-{args.sample_rate}_win-{args.window_size}_hop-{args.hop_size}_"
         f"mel-{args.mel_bins}_fmin-{args.fmin}_fmax-{args.fmax or 'none'}_"
@@ -43,12 +53,28 @@ def save_results(args, test_acc, test_map, test_f1):
         f"epoch-{args.max_epoch}_loss-{args.loss}"
     )
 
-    results_path = f"{results_dir}/{args.dataset}_{args.frontend}_{args.model_name}_{args.spec_aug}_results_{params_str}.txt"
+    # Add ablation parameters if applicable
+    if args.ablation:
+        if args.spec_aug == 'specaugment':
+            ablation_params = args.specaugment_params
+        elif args.spec_aug == 'diffres':
+            ablation_params = args.diffres_params
+        elif args.spec_aug == 'specmix':
+            ablation_params = args.specmix_params
+        else:
+            ablation_params = "unknown"
+
+        params_str += f"_abl-{args.spec_aug}_{ablation_params}"
+
+    # Define the results file path
+    results_path = f"{save_dir}/{args.dataset}_{args.frontend}_{args.model_name}_{args.spec_aug}_results_{params_str}.txt"
     
+    # Save results to the file
     with open(results_path, "w") as f:
         f.write(f"Test Accuracy: {test_acc:.4f}\n")
         f.write(f"Test mAP: {test_map:.4f}\n")
         f.write(f"Test F1 Score: {test_f1:.4f}\n")
+
     print(f"Results saved to {results_path}")
 
 def main():

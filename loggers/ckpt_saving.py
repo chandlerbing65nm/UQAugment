@@ -35,6 +35,11 @@ def save_checkpoint(model, args, best_val_map, best_val_acc, current_val_map, cu
 
         params_str += f"_abl-{args.spec_aug}_{ablation_params}"
 
+    # Add audiomentations parameters if applicable
+    if hasattr(args, 'audiomentations') and args.audiomentations:
+        audiomentations_str = "-".join(args.audiomentations)
+        params_str += f"_audioment-{audiomentations_str}"
+
     # Save the best model based on validation mAP
     if current_val_map > best_val_map:
         best_val_map = current_val_map

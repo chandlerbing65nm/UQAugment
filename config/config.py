@@ -45,7 +45,12 @@ def parse_args():
 
     # Augmentation Parameters
     augmentation = parser.add_argument_group('Augmentation Parameters')
-    augmentation.add_argument('--audiomentations', action='store_true', help='Apply audiomentations')
+    parser.add_argument(
+        '--audiomentations',
+        nargs='+',
+        choices=['gaussian_noise', 'pitch_shift', 'time_stretch'],
+        help='List of audiomentation effects to apply. Choose from gaussian_noise, pitch_shift, time_stretch.'
+    )
     augmentation.add_argument('--spec_aug',  type=str, default='specaugment', help='Name of the spectrogram augmentation')
 
     # Logging Parameters

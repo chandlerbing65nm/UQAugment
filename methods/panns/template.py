@@ -429,7 +429,8 @@ class PANNS_CNN14(nn.Module):
 
 class PANNS_RESNET22(nn.Module):
     def __init__(self, sample_rate, window_size, hop_size, mel_bins, fmin, 
-                 fmax, num_classes, freeze_base=False
+                 fmax, num_classes, frontend='logmel', batch_size=200,
+                 freeze_base=False, device=None, args=None
                  ):
         """Classifier for a new task using pretrained Cnn6 as a sub-module."""
         super(PANNS_RESNET22, self).__init__()
@@ -446,17 +447,41 @@ class PANNS_RESNET22(nn.Module):
         self.base = ResNet22(sample_rate, window_size, hop_size, mel_bins, fmin, 
                          fmax, audioset_classes_num)
 
-        # Step 2: Optionally store the custom modules (but do not apply them yet)
+        self.frontend = frontend
+        self.sample_rate = sample_rate
+        self.window_size = window_size
+        self.hop_size = hop_size
+        self.mel_bins = mel_bins
+        self.fmin = fmin
+        self.fmax = fmax
+        self.num_classes = num_classes
+        self.args = args
+        self.duration = args.target_duration
+
         # Spectrogram extractor
-        self.spectrogram_extractor = Spectrogram(n_fft=window_size, hop_length=hop_size, 
-            win_length=window_size, window=window, center=center, pad_mode=pad_mode, 
-            freeze_parameters=True)
+        self.spectrogram_extractor = Spectrogram(
+            n_fft=window_size,
+            hop_length=hop_size,
+            win_length=window_size,
+            window=window,
+            center=center,
+            pad_mode=pad_mode,
+            freeze_parameters=True
+        )
 
         # Logmel feature extractor
-        self.logmel_extractor = LogmelFilterBank(sr=sample_rate, n_fft=window_size, 
-            n_mels=mel_bins, fmin=fmin, fmax=fmax, ref=ref, amin=amin, top_db=top_db, 
-            freeze_parameters=True)
-
+        self.logmel_extractor = LogmelFilterBank(
+            sr=sample_rate,
+            n_fft=window_size,
+            n_mels=mel_bins,
+            fmin=fmin,
+            fmax=fmax,
+            ref=ref,
+            amin=amin,
+            top_db=top_db,
+            freeze_parameters=True
+        )
+        
         # Transfer to another task layer
         self.fc_transfer = nn.Linear(2048, num_classes, bias=True)  # Assuming 512 is embedding size
         

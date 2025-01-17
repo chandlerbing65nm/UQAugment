@@ -138,38 +138,57 @@ if __name__ == "__main__":
     # Parse default arguments
     args = parse_args()
 
-    # AFFIA3K
-    override_args = Namespace(
-        batch_size=200,
-        dataset="affia3k",
-        data_path="/scratch/project_465001389/chandler_scratch/Datasets/affia3k",
-        spec_aug="specmix", # fma, diffres, specaugment, specmix
-        num_classes=4,
-        sample_rate=128000,
-        window_size=2048,
-        hop_size=1024,
-        mel_bins=64,
-        fmin=50,
-        target_duration=2,
-        seed=42 # Seed for reproducibility
-    )
-
-    # # MRS-FFIA
+    # # AFFIA3K
     # override_args = Namespace(
     #     batch_size=200,
-    #     dataset='mrsffia',
-    #     data_path='/scratch/project_465001389/chandler_scratch/Datasets/mrsffia',
-    #     spec_aug="fma", # fma, diffres, specaugment, specmix
+    #     dataset="affia3k",
+    #     data_path="/scratch/project_465001389/chandler_scratch/Datasets/affia3k",
+    #     spec_aug="specmix", # fma, diffres, specaugment, specmix
     #     num_classes=4,
-    #     sample_rate=22050,
-    #     window_size=1024,
-    #     hop_size=512,
+    #     sample_rate=128000,
+    #     window_size=2048,
+    #     hop_size=1024,
     #     mel_bins=64,
-    #     fmin=1,
-    #     fmax=14000,
-    #     target_duration=3,
+    #     fmin=50,
+    #     target_duration=2,
     #     seed=42 # Seed for reproducibility
     # )
+
+    # # UFFIA
+    # override_args = Namespace(
+    #     batch_size=200,
+    #     max_epoch=500,
+    #     wandb_mode="offline",
+    #     dataset='uffia',
+    #     data_path='/scratch/project_465001389/chandler_scratch/Datasets/uffia',
+    #     spec_aug="specmix", # fma, diffres, specaugment, specmix
+    #     num_classes=4,
+    #     sample_rate=64000,
+    #     window_size=2048,
+    #     hop_size=1024,
+    #     mel_bins=64,
+    #     fmin=1,
+    #     fmax=128000,
+    #     target_duration=2,
+    #     seed=42 # Seed for reproducibility
+    # )
+
+    # MRS-FFIA
+    override_args = Namespace(
+        batch_size=200,
+        dataset='mrsffia',
+        data_path='/scratch/project_465001389/chandler_scratch/Datasets/mrsffia',
+        spec_aug="specmix", # fma, diffres, specaugment, specmix
+        num_classes=4,
+        sample_rate=22050,
+        window_size=1024,
+        hop_size=512,
+        mel_bins=64,
+        fmin=1,
+        fmax=14000,
+        target_duration=3,
+        seed=42 # Seed for reproducibility
+    )
 
     # Update the default arguments with the hardcoded overrides
     for key, value in vars(override_args).items():

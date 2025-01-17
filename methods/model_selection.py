@@ -42,7 +42,10 @@ def get_model(args):
             mel_bins=args.mel_bins, 
             fmin=args.fmin, 
             fmax=args.fmax, 
-            num_classes=args.num_classes
+            num_classes=args.num_classes,
+            frontend=args.frontend,
+            batch_size=args.batch_size,
+            args=args
         )
         model.load_from_pretrain("/scratch/project_465001389/chandler_scratch/Projects/FrameMixer/weights/ResNet22_mAP=0.430.pth") 
     elif args.model_name == 'panns_mobilenetv1':

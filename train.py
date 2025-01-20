@@ -21,6 +21,8 @@ from datasets.affia3k import get_dataloader as affia3k_loader
 from sklearn.metrics import average_precision_score, accuracy_score, f1_score
 from sklearn.preprocessing import label_binarize
 
+from datasets.noise import get_dataloader as noise_loader
+
 from tqdm import tqdm
 from pprint import pprint
 
@@ -68,6 +70,10 @@ def main():
     # Initialize data loaders using the new dataset_selection module
     train_dataset, train_loader, val_dataset, val_loader = get_dataloaders(args, transform)
 
+    # Noise data loaders
+    _, noisetrain_loader = noise_loader(split='train', batch_size=args.batch_size//10, sample_rate=args.sample_rate, shuffle=False, seed=args.seed, drop_last=True, transform=None, args=args)
+    _, noiseval_loader = noise_loader(split='val', batch_size=args.batch_size//10, sample_rate=args.sample_rate, shuffle=False, seed=args.seed, drop_last=True, transform=None, args=args)
+
     # Loss and optimizer
     criterion = get_loss_function(args)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate, betas=(0.9, 0.999), weight_decay=0)
@@ -93,10 +99,32 @@ def main():
         all_train_targets = []
         all_train_outputs = []
 
+        noise_iter = iter(noisetrain_loader)
+
         for batch in tqdm(train_loader, desc=f"Epoch {epoch+1}/{args.max_epoch} - Training"):
             inputs = batch['waveform'].to(device)
             targets = batch['target'].to(device)
 
+            # Add noise if args.ablation and args.noise are True
+            if args.ablation and args.noise:
+                try:
+                    noise_batch = next(noise_iter)['waveform'].to(device)
+                except StopIteration:
+                    # Restart noise loader iterator when exhausted
+                    noise_iter = iter(noisetrain_loader)
+                    noise_batch = next(noise_iter)['waveform'].to(device)
+                
+                # Repeat noise to match inputs' batch size
+                repeat_factor = (inputs.size(0) + noise_batch.size(0) - 1) // noise_batch.size(0)
+                noise_batch = noise_batch.repeat(repeat_factor, 1)[:inputs.size(0)]
+                
+                # Add noise with alpha=0.1
+                alpha = 0.1
+                inputs = inputs + alpha * noise_batch
+
+            import ipdb; ipdb.set_trace() 
+            print(inputs.shape)
+            
             loss, outputs = process_outputs(model, args, inputs, targets, criterion)
 
             # Backward pass and optimization
@@ -132,10 +160,29 @@ def main():
         all_val_targets = []
         all_val_outputs = []
 
+        noise_iter = iter(noiseval_loader)
+
         with torch.no_grad():
             for batch in tqdm(val_loader, desc=f"Epoch {epoch+1}/{args.max_epoch} - Validation"):
                 inputs = batch['waveform'].to(device)
                 targets = batch['target'].to(device)
+
+                # Add noise if args.ablation and args.noise are True
+                if args.ablation and args.noise:
+                    try:
+                        noise_batch = next(noise_iter)['waveform'].to(device)
+                    except StopIteration:
+                        # Restart noise loader iterator when exhausted
+                        noise_iter = iter(noiseval_loader)
+                        noise_batch = next(noise_iter)['waveform'].to(device)
+                    
+                    # Repeat noise to match inputs' batch size
+                    repeat_factor = (inputs.size(0) + noise_batch.size(0) - 1) // noise_batch.size(0)
+                    noise_batch = noise_batch.repeat(repeat_factor, 1)[:inputs.size(0)]
+                    
+                    # Add noise with alpha=0.1
+                    alpha = 0.1
+                    inputs = inputs + alpha * noise_batch
 
                 if any(keyword in args.model_name for keyword in ('panns', 'ast')):
                     outputs = model(inputs)['clipwise_output']

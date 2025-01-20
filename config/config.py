@@ -71,6 +71,6 @@ def parse_args():
                                 help='Comma-separated values: dimension_reduction_rate,learn_pos_emb (True/False)')
     ablation_group.add_argument('--specmix_params', type=str, default='0.5,8,16,2,2', # 0.3,4,8,1,1 # 0.5,8,16,2,2 # 0.7,16,32,4,4
                                 help='Comma-separated values: prob,min_band_size,max_band_size,max_frequency_bands,max_time_bands')
-
+    ablation_group.add_argument('--noise', action='store_true', help='if adding real-world noise - additive mixing')
 
     return parser.parse_args()

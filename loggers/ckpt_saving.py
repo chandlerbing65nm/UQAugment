@@ -31,6 +31,7 @@ def save_checkpoint(model, args, best_val_map, best_val_acc, current_val_map, cu
         elif args.spec_aug == 'specmix':
             ablation_params = args.specmix_params
         else:
+            # if using fma or none - not yet implemented
             ablation_params = "unknown"
 
         params_str += f"_abl-{args.spec_aug}_{ablation_params}"

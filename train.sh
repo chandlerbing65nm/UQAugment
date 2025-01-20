@@ -28,8 +28,8 @@ python train.py \
     --wandb_mode "offline" \
     --dataset affia3k \
     --data_path /scratch/project_465001389/chandler_scratch/Datasets/affia3k \
-    --model_name "panns_resnet22" \
-    --spec_aug "none" \
+    --model_name "panns_cnn6" \
+    --spec_aug "fma" \
     --num_classes 4 \
     --sample_rate 128000 \
     --window_size 2048 \
@@ -37,8 +37,9 @@ python train.py \
     --mel_bins 64 \
     --fmin 50 \
     --target_duration 2 \
-    --audiomentation 'gaussian_noise'
-    # --ablation \
+    --ablation \
+    --frontend 'mfcc' \
+    # --audiomentation 'gaussian_noise'
     # --diffres_params '0.10,False' \
 
 ############################ UFFIA ############################

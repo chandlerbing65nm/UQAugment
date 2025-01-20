@@ -168,6 +168,7 @@ class PANNS_CNN6(nn.Module):
         self.fc_transfer = nn.Linear(512, num_classes, bias=True)  # Assuming 512 is embedding size
 
         self.bn = nn.BatchNorm2d(mel_bins)
+        self.bn2 = nn.BatchNorm2d(mel_bins)
         if freeze_base:
             # Freeze AudioSet pretrained layers
             for param in self.base.parameters():
@@ -220,8 +221,8 @@ class PANNS_CNN6(nn.Module):
     def forward(self, input, mixup_lambda=None):
         """Input: (batch_size, data_length)"""
 
-        x = self.spectrogram_extractor(input)  # (batch, time_steps, freq_bins)
-        x = self.logmel_extractor(x)  # (batch, time_steps, mel_bins)
+        # Select the frontend based on args.frontend
+        x = self.apply_frontend(input)
 
         # Precomputed features alignment and normalization
         x = x.transpose(1, 3)  # Align dimensions for the base model
@@ -262,6 +263,70 @@ class PANNS_CNN6(nn.Module):
             output_dict.update(aug_output)
 
         return output_dict
+
+    def apply_frontend(self, input):
+        """
+        Select and apply the appropriate frontend based on args.frontend.
+        """
+        if self.args.frontend == 'logmel':
+            # Logmel frontend
+            x = self.spectrogram_extractor(input)  # (batch, 1, time_steps, freq_bins)
+            x = self.logmel_extractor(x)  # (batch, 1, time_steps, freq_bins)
+        elif self.args.frontend == 'lfcc':
+            # LFCC frontend
+            x = self.spectrogram_extractor(input)  # (batch, 1, time_steps, freq_bins)
+            x = x.squeeze(1)  # (batch, time_steps, freq_bins)
+
+            # Apply LFCC transformation
+            lfcc_transform = torchaudio.transforms.LFCC(
+                sample_rate=self.sample_rate,
+                n_filter=self.mel_bins,  # Match the number of linear filter bins to mel_bins
+                f_min=self.fmin,
+                f_max=self.fmax,
+                n_lfcc=self.mel_bins,  # Number of LFCC coefficients
+                log_lf=True,
+                speckwargs={
+                    'n_fft': self.window_size,
+                    'hop_length': self.hop_size,
+                    'win_length': self.window_size,
+                }
+            ).to(input.device)  # Ensure LFCC is on the correct device
+            x = lfcc_transform(x)
+            # Reduce complex-valued tensor to magnitude
+            if x.size(-1) == 2:  # If the last dimension is for real and imaginary parts
+                x = torch.sqrt(x[..., 0]**2 + x[..., 1]**2)  # (batch, time_steps, n_mfcc)
+            x = x.unsqueeze(1)  # (batch, 1, time_steps, lfcc_bins)
+        elif self.args.frontend == 'mfcc':
+            # MFCC frontend
+            x = self.spectrogram_extractor(input)  # (batch, 1, time_steps, freq_bins)
+            x = x.squeeze(1)  # (batch, time_steps, freq_bins)
+
+            # Ensure window tensor is on the correct device
+            mfcc_transform = torchaudio.transforms.MFCC(
+                sample_rate=self.sample_rate,
+                n_mfcc=self.mel_bins,
+                log_mels=True,
+                melkwargs={
+                    'n_fft': self.window_size,
+                    'hop_length': self.hop_size,
+                    'n_mels': self.mel_bins,
+                    'f_min': self.fmin,
+                    'f_max': self.fmax
+                }
+            ).to(input.device)  # Move MFCC transform to the correct device
+            x = mfcc_transform(x)
+            # Reduce complex-valued tensor to magnitude
+            if x.size(-1) == 2:  # If the last dimension is for real and imaginary parts
+                x = torch.sqrt(x[..., 0]**2 + x[..., 1]**2)  # (batch, time_steps, n_mfcc)
+            x = x.unsqueeze(1)  # (batch, 1, time_steps, mfcc_bins)
+        else:
+            raise ValueError(f"Unsupported frontend type: {self.frontend}")
+
+        # import ipdb; ipdb.set_trace() 
+        # print(x.shape)
+
+        return x
+
 
 class PANNS_CNN14(nn.Module):
     def __init__(self, sample_rate, window_size, hop_size, mel_bins, fmin, 

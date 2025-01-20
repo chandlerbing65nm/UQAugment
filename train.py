@@ -122,9 +122,9 @@ def main():
                 alpha = 0.1
                 inputs = inputs + alpha * noise_batch
 
-            import ipdb; ipdb.set_trace() 
-            print(inputs.shape)
-            
+            # import ipdb; ipdb.set_trace() 
+            # print(inputs.shape)
+
             loss, outputs = process_outputs(model, args, inputs, targets, criterion)
 
             # Backward pass and optimization

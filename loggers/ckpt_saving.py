@@ -41,13 +41,17 @@ def save_checkpoint(model, args, best_val_map, best_val_acc, current_val_map, cu
         audiomentations_str = "-".join(args.audiomentations)
         params_str += f"_audioment-{audiomentations_str}"
 
+    # Add noise toggle note if both ablation and noise are True
+    if args.ablation and args.noise:
+        params_str += "_withnoise"
+
     # Save the best model based on validation mAP
     if current_val_map > best_val_map:
         best_val_map = current_val_map
         print(f"Best validation map updated to {best_val_map:.4f}")
         torch.save(
             model.state_dict(),
-            # f'{save_dir}/{args.dataset}_{args.frontend}_{args.model_name}_{args.spec_aug}_best_map_{params_str}.pth'
+            f'{save_dir}/{args.dataset}_{args.frontend}_{args.model_name}_{args.spec_aug}_best_map_{params_str}.pth'
         )
 
     # Save the best model based on validation accuracy
@@ -56,7 +60,7 @@ def save_checkpoint(model, args, best_val_map, best_val_acc, current_val_map, cu
         print(f"Best validation acc updated to {best_val_acc:.4f}")
         torch.save(
             model.state_dict(),
-            # f'{save_dir}/{args.dataset}_{args.frontend}_{args.model_name}_{args.spec_aug}_best_acc_{params_str}.pth'
+            f'{save_dir}/{args.dataset}_{args.frontend}_{args.model_name}_{args.spec_aug}_best_acc_{params_str}.pth'
         )
 
     return best_val_map, best_val_acc

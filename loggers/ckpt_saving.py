@@ -43,7 +43,7 @@ def save_checkpoint(model, args, best_val_map, best_val_acc, current_val_map, cu
 
     # Add noise toggle note if both ablation and noise are True
     if args.ablation and args.noise:
-        params_str += "_withnoise"
+        params_str += f"_withnoise_seg-{args.noise_segment_ratio}"
 
     # Save the best model based on validation mAP
     if current_val_map > best_val_map:

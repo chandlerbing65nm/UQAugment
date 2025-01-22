@@ -28,7 +28,7 @@ python train.py \
     --wandb_mode "offline" \
     --dataset affia3k \
     --data_path /scratch/project_465001389/chandler_scratch/Datasets/affia3k \
-    --model_name "panns_cnn6" \
+    --model_name "ast" \
     --spec_aug "fma" \
     --num_classes 4 \
     --sample_rate 128000 \

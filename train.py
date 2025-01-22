@@ -157,7 +157,7 @@ def main():
                 
                 # Use the helper function to insert localized noise
                 lam = int(args.target_duration * args.sample_rate) // 2  # Set lambda to the middle of the waveform
-                segment_ratio = 0.1  # inject noise in 10% of the audio length
+                segment_ratio = args.noise_segment_ratio  # inject noise in 10% of the audio length
                 inputs = add_poisson_noise_in_segment(inputs, noise_batch, lam=lam, segment_ratio=segment_ratio)
 
             # import ipdb; ipdb.set_trace() 
@@ -218,7 +218,7 @@ def main():
                     noise_batch = noise_batch.repeat(repeat_factor, 1)[:inputs.size(0)]
                     
                     lam = int(args.target_duration * args.sample_rate) // 2
-                    segment_ratio = 0.1
+                    segment_ratio = args.noise_segment_ratio
                     inputs = add_poisson_noise_in_segment(inputs, noise_batch, lam=lam, segment_ratio=segment_ratio)
 
 

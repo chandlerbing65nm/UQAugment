@@ -10,7 +10,7 @@
 #SBATCH --partition=standard-g            
 #SBATCH --time=24:00:00           
 #SBATCH --account=project_465001389
-#SBATCH --output=/users/doloriel/work/Repo/FrameMixer/logs/ablation/affia3k/panns_cnn6/none-noise.out
+#SBATCH --output=/users/doloriel/work/Repo/FrameMixer/logs/affia3k/panns_cnn6/fma(softmax-dim=-2).out
 
 
 # fma
@@ -42,7 +42,7 @@ python train.py \
     --dataset affia3k \
     --data_path /scratch/project_465001389/chandler_scratch/Datasets/affia3k \
     --model_name "panns_cnn6" \
-    --spec_aug "none" \
+    --spec_aug "fma" \
     --num_classes 4 \
     --sample_rate 128000 \
     --window_size 2048 \
@@ -50,8 +50,8 @@ python train.py \
     --mel_bins 64 \
     --fmin 50 \
     --target_duration 2 \
-    --ablation \
-    --noise \
+    # --ablation \
+    # --noise \
     # --frontend 'lfcc' \
     # --audiomentation 'gaussian_noise'
     # --specmix_params '0.3,4,8,1,1' \

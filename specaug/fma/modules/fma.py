@@ -40,7 +40,7 @@ class FrameMixup(nn.Module):
     def compute_augmenting_path(self, noise_template):
         mu, sigma = 0, 1  # mean and standard deviation for Gaussian
         gaussian_noise = torch.normal(mu, sigma, size=noise_template.size(), device=noise_template.device)  # [batch_size, reduced_len, seq_len]
-        return F.softmax(gaussian_noise / self.temperature, dim=-1)  # [batch_size, reduced_len, seq_len]
+        return F.softmax(gaussian_noise / self.temperature, dim=-2)  # [batch_size, reduced_len, seq_len]
 
     def apply_augmenting(self, feature, augmenting_path):
         augmented_feature = torch.einsum('bij,bjf->bif', augmenting_path, feature)  # [batch_size, reduced_len, feat_dim]

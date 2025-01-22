@@ -45,6 +45,43 @@ def set_seed(seed):
     np.random.seed(seed)
     random.seed(seed)
 
+def add_poisson_noise_in_segment(inputs, noise_batch, alpha=0.1, lam=100, segment_ratio=0.1):
+    """
+    Adds noise to `inputs` in a localized segment for each sample in the batch.
+
+    Args:
+        inputs (torch.Tensor): Shape [B, L], your clean audio batch.
+        noise_batch (torch.Tensor): Shape [B, L], the noise batch (already repeated to match B).
+        alpha (float): Scaling factor for how loud the noise is.
+        lam (float): Lambda for the Poisson distribution controlling start offsets.
+        segment_ratio (float): Fraction of total length for the noise segment size.
+    Returns:
+        torch.Tensor: The inputs with localized noise added.
+    """
+    B, L = inputs.shape
+
+    # Sample B offsets from a Poisson distribution, each offset indicating where noise starts.
+    # (Shape = [B], each entry is a random int >= 0)
+    poisson_offsets = torch.poisson(torch.full((B,), lam, dtype=torch.float, device=inputs.device))
+
+    # Make sure offsets don't exceed the audio length.
+    # You might experiment with a smaller or bigger clamp depending on lam, etc.
+    poisson_offsets = torch.clamp(poisson_offsets, max=L-1)
+
+    # Decide how large the noise window is. E.g., 10% of total length
+    seg_length = int(segment_ratio * L)
+    if seg_length < 1:
+        seg_length = 1  # at least 1 sample
+
+    for i in range(B):
+        start = int(poisson_offsets[i].item())  # Cast to int
+        end = int(min(start + seg_length, L))  # Cast to int
+        # Mix noise into inputs only in [start : end]
+        inputs[i, start:end] += alpha * noise_batch[i, start:end]
+
+    return inputs
+
+    
 def main():
     args = parse_args()
 
@@ -113,14 +150,15 @@ def main():
                     # Restart noise loader iterator when exhausted
                     noise_iter = iter(noisetrain_loader)
                     noise_batch = next(noise_iter)['waveform'].to(device)
-                
+
                 # Repeat noise to match inputs' batch size
                 repeat_factor = (inputs.size(0) + noise_batch.size(0) - 1) // noise_batch.size(0)
                 noise_batch = noise_batch.repeat(repeat_factor, 1)[:inputs.size(0)]
                 
-                # Add noise with alpha=0.1
-                alpha = 0.1
-                inputs = inputs + alpha * noise_batch
+                # Use the helper function to insert localized noise
+                lam = int(args.target_duration * args.sample_rate) // 2  # Set lambda to the middle of the waveform
+                segment_ratio = 0.1  # inject noise in 10% of the audio length
+                inputs = add_poisson_noise_in_segment(inputs, noise_batch, lam=lam, segment_ratio=segment_ratio)
 
             # import ipdb; ipdb.set_trace() 
             # print(inputs.shape)
@@ -175,14 +213,14 @@ def main():
                         # Restart noise loader iterator when exhausted
                         noise_iter = iter(noiseval_loader)
                         noise_batch = next(noise_iter)['waveform'].to(device)
-                    
-                    # Repeat noise to match inputs' batch size
+
                     repeat_factor = (inputs.size(0) + noise_batch.size(0) - 1) // noise_batch.size(0)
                     noise_batch = noise_batch.repeat(repeat_factor, 1)[:inputs.size(0)]
                     
-                    # Add noise with alpha=0.1
-                    alpha = 0.1
-                    inputs = inputs + alpha * noise_batch
+                    lam = int(args.target_duration * args.sample_rate) // 2
+                    segment_ratio = 0.1
+                    inputs = add_poisson_noise_in_segment(inputs, noise_batch, lam=lam, segment_ratio=segment_ratio)
+
 
                 if any(keyword in args.model_name for keyword in ('panns', 'ast')):
                     outputs = model(inputs)['clipwise_output']

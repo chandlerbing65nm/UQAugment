@@ -1,0 +1,5 @@
+Test Accuracy: 0.4825
+Test mAP: 0.5626
+Test F1 Score: 0.4856
+Expected Calibration Error (ECE): 0.1046
+Negative Log-Likelihood (NLL): 1.1143

@@ -10,7 +10,7 @@
 #SBATCH --partition=standard-g            
 #SBATCH --time=24:00:00           
 #SBATCH --account=project_465001389
-#SBATCH --output=/users/doloriel/work/Repo/FrameMixer/logs/ablation/affia3k/panns_cnn6/none-noise-0.3.out
+#SBATCH --output=/users/doloriel/work/Repo/FrameMixer/logs/uffia/panns_mobilenetv1/fma.out
 
 
 # fma
@@ -34,49 +34,49 @@ conda init
 conda activate framemixer
 cd /users/doloriel/work/Repo/FrameMixer
 
-# ############################ AFFIA3K ############################
+############################ UFFIA ############################
 python train.py \
     --batch_size 200 \
     --max_epoch 500 \
     --wandb_mode "offline" \
-    --dataset affia3k \
-    --data_path /scratch/project_465001389/chandler_scratch/Datasets/affia3k \
-    --model_name "panns_cnn6" \
-    --spec_aug "none" \
+    --dataset uffia \
+    --data_path /scratch/project_465001389/chandler_scratch/Datasets/uffia \
+    --model_name "panns_mobilenetv1" \
+    --spec_aug "fma" \
     --num_classes 4 \
-    --sample_rate 128000 \
+    --sample_rate 64000 \
     --window_size 2048 \
     --hop_size 1024 \
     --mel_bins 64 \
-    --fmin 50 \
+    --fmin 1 \
+    --fmax 128000 \
     --target_duration 2 \
-    --ablation \
-    --noise \
-    --noise_segment_ratio 0.3 \
-    # --frontend 'lfcc' \
+    # --ablation \
+    # --noise \
     # --audiomentation 'gaussian_noise'
-    # --specmix_params '0.3,4,8,1,1' \
 
-############################ UFFIA ############################
+############################ AFFIA3K ############################
 # python train.py \
 #     --batch_size 200 \
 #     --max_epoch 500 \
 #     --wandb_mode "offline" \
-#     --dataset uffia \
-#     --data_path /scratch/project_465001389/chandler_scratch/Datasets/uffia \
-#     --model_name "ast" \
+#     --dataset affia3k \
+#     --data_path /scratch/project_465001389/chandler_scratch/Datasets/affia3k \
+#     --model_name "panns_cnn6" \
 #     --spec_aug "fma" \
 #     --num_classes 4 \
-#     --sample_rate 64000 \
+#     --sample_rate 128000 \
 #     --window_size 2048 \
 #     --hop_size 1024 \
 #     --mel_bins 64 \
-#     --fmin 1 \
-#     --fmax 128000 \
+#     --fmin 50 \
 #     --target_duration 2 \
-#     # --ablation \
-#     # --noise \
+#     --ablation \
+#     --noise \
+#     --noise_segment_ratio 0.1 \
+#     # --frontend 'lfcc' \
 #     # --audiomentation 'gaussian_noise'
+#     # --specmix_params '0.3,4,8,1,1' \
 
 ############################ MRS-FFIA ############################
 # python train.py \

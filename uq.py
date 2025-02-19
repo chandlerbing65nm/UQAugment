@@ -260,7 +260,7 @@ def main():
     print(f"Negative Log-Likelihood (NLL): {nll:.4f}")
 
     # Save results
-    save_results(args, test_acc, test_map, test_f1, ece, nll)
+    # save_results(args, test_acc, test_map, test_f1, ece, nll)
 
 if __name__ == '__main__':
     main()

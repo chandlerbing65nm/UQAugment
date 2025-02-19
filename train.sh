@@ -33,12 +33,12 @@ python train.py \
     --num_classes 4 \
     --sample_rate 128000 \
     --window_size 2048 \
-    --hop_size 1024 \
+    --hop_size 2048 \
     --mel_bins 64 \
     --fmin 50 \
     --target_duration 2 \
     --ablation \
-    --noise \
+    # --noise \
     # --frontend 'mfcc' \
     # --audiomentation 'gaussian_noise'
     # --diffres_params '0.10,False' \

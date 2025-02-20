@@ -23,7 +23,6 @@ import librosa
 
 from methods.ast.utils import mixup
 
-from specaug.diffres.frontend import DiffRes
 from specaug.fma.frontend import FMA
 from specaug.specmix.frontend import SpecMix
 
@@ -66,13 +65,6 @@ class SpecAugmenter(nn.Module):
             freq_stripes_num=2
         )
 
-        self.diffres = DiffRes(
-            in_t_dim=int((sample_rate / hop_size) * duration) + 1,  # Adjust based on input dimensions
-            in_f_dim=mel_bins,
-            dimension_reduction_rate=0.60,
-            learn_pos_emb=False
-        )
-
         self.specmix = SpecMix(
             prob=0.5,
             min_band_size=mel_bins // 8,
@@ -81,10 +73,6 @@ class SpecAugmenter(nn.Module):
             max_time_bands=2,
         )
 
-        self.fma = FMA(
-            in_t_dim=int((sample_rate / hop_size) * duration) + 1,
-            in_f_dim=mel_bins,
-        )
 
     def forward(self, x, training=True):
         """
@@ -94,7 +82,6 @@ class SpecAugmenter(nn.Module):
         :param training: bool indicating whether the model is in training mode
         :return: A dictionary containing:
             - 'x': The augmented features
-            - 'guide_loss': If diffres is used
             - 'rn_indices': If mixup or specmix is used
             - 'mixup_lambda': If mixup or specmix is used
         """
@@ -102,38 +89,11 @@ class SpecAugmenter(nn.Module):
         output_dict = {}
         spec_aug = self.args.spec_aug
 
-        if spec_aug == 'diffres':
-            # DiffRes returns a guide loss and modified features
-            x = x.squeeze(1)  # from (B, 1, T, F) to (B, T, F)
-            ret = self.diffres(x)
-            guide_loss = ret["guide_loss"]
-            x = ret["feature"]
-            # Add guide_loss to output
-            output_dict['guide_loss'] = guide_loss
-
-        elif spec_aug == 'fma':
-            # FMA augmentation
-            x = x.squeeze(1)
-            x = self.fma(x)
-            # No extra outputs needed
-
-        elif spec_aug == 'specaugment':
+        if spec_aug == 'specaugment':
             # Standard SpecAugmentation
             if training:
                 x = self.specaugment(x)
             x = x.squeeze(1)
-
-        elif spec_aug == 'mixup':
-            # Mixup augmentation
-            if training:
-                bs = x.size(0)
-                rn_indices, lam = mixup(bs, 0.4)
-                lam = lam.to(x.device)
-                x = x * lam.reshape(bs, 1, 1, 1) + x[rn_indices] * (1. - lam.reshape(bs, 1, 1, 1))
-                output_dict['rn_indices'] = rn_indices
-                output_dict['mixup_lambda'] = lam
-            x = x.squeeze(1)
-
         elif spec_aug == 'specmix':
             # SpecMix augmentation
             if training:
@@ -141,7 +101,6 @@ class SpecAugmenter(nn.Module):
                 output_dict['rn_indices'] = rn_indices
                 output_dict['mixup_lambda'] = lam
             x = x.squeeze(1)
-
         else:
             x = x.squeeze(1)
             
@@ -215,13 +174,8 @@ class AudioSpectrogramTransformer(nn.Module):
             args=args
         )
 
-        # Initialize ASTModel backbone
-        if self.args.spec_aug == 'diffres':
-            ast_fdim = mel_bins
-            ast_tdim = int((int((sample_rate / hop_size) * self.duration) + 1) * (1 - 0.60))
-        else:
-            ast_fdim = mel_bins
-            ast_tdim = int((sample_rate / hop_size) * self.duration) + 1
+        ast_fdim = mel_bins
+        ast_tdim = int((sample_rate / hop_size) * self.duration) + 1
 
         self.backbone = ASTModel(
             label_dim=self.num_classes,  # Initial label_dim; will adjust later
@@ -260,13 +214,10 @@ class AudioSpectrogramTransformer(nn.Module):
         # 3. Apply spectral augmentations
         # The SpecAugmenter returns a dictionary containing:
         # 'x': augmented features (B, T, mel_bins) or (B, 1, T, mel_bins)
-        # 'guide_loss': (if diffres) scalar loss to add
         # 'rn_indices', 'mixup_lambda' (if specmix is used)
         aug_output = self.spec_augmenter(x, training=self.training)
         x = aug_output['x']
 
-        # Extract guide_loss from diffres if present
-        guide_loss = aug_output.get('guide_loss', None)
         # Extract specmix parameters if present
         rn_indices = aug_output.get('rn_indices', None)
         lam = aug_output.get('mixup_lambda', None)
@@ -278,10 +229,6 @@ class AudioSpectrogramTransformer(nn.Module):
         output_dict = {
             'clipwise_output': logits
         }
-
-        # Add diffres loss if used
-        if self.training and guide_loss is not None:
-            output_dict['diffres_loss'] = guide_loss
 
         # Add specmix parameters if used
         if self.training and rn_indices is not None and lam is not None:

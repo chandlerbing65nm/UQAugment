@@ -3,7 +3,7 @@ import torch
 
 def save_checkpoint(model, args, best_val_map, best_val_acc, current_val_map, current_val_acc):
     # Base checkpoint directory
-    ckpt_dir = f'/scratch/project_465001389/chandler_scratch/Projects/FrameMixer/checkpoints'
+    ckpt_dir = f'/scratch/project_465001389/chandler_scratch/Projects/FrameMixer/checkpoints_uq'
     
     # If ablation is enabled, create a subdirectory for ablations
     if args.ablation:
@@ -26,8 +26,6 @@ def save_checkpoint(model, args, best_val_map, best_val_acc, current_val_map, cu
     if args.ablation:
         if args.spec_aug == 'specaugment':
             ablation_params = args.specaugment_params
-        elif args.spec_aug == 'diffres':
-            ablation_params = args.diffres_params
         elif args.spec_aug == 'specmix':
             ablation_params = args.specmix_params
         else:
@@ -37,9 +35,18 @@ def save_checkpoint(model, args, best_val_map, best_val_acc, current_val_map, cu
         params_str += f"_abl-{args.spec_aug}_{ablation_params}"
 
     # Add audiomentations parameters if applicable
-    if hasattr(args, 'audiomentations') and args.audiomentations:
+    if args.audiomentations:
         audiomentations_str = "-".join(args.audiomentations)
         params_str += f"_audioment-{audiomentations_str}"
+        
+        if args.ablation:
+            # Append additional parameters if specific augmentations are chosen
+            if 'gaussian_noise' in args.audiomentations:
+                params_str += f"_gaussian_noise_params-{args.gaussian_noise_params}"
+            if 'pitch_shift' in args.audiomentations:
+                params_str += f"_pitch_shift_params-{args.pitch_shift_params}"
+            if 'time_stretch' in args.audiomentations:
+                params_str += f"_time_stretch_params-{args.time_stretch_params}"
 
     # Add noise toggle note if both ablation and noise are True
     if args.ablation and args.noise:

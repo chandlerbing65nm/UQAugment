@@ -24,7 +24,7 @@ def parse_args():
     # Model Parameters
     model = parser.add_argument_group('Model Parameters')
     model.add_argument('--model_name', type=str, default='panns_cnn6', help='Name of the model to use')
-    model.add_argument('--frontend', type=str, default='logmel', help='Frontend type (logmel, mixup, diffres)')
+    model.add_argument('--frontend', type=str, default='logmel', help='Frontend type (logmel, etc)')
 
     # Data Processing Parameters
     data_processing = parser.add_argument_group('Data Processing Parameters')
@@ -51,6 +51,10 @@ def parse_args():
         choices=['gaussian_noise', 'pitch_shift', 'time_stretch'],
         help='List of audiomentation effects to apply. Choose from gaussian_noise, pitch_shift, time_stretch.'
     )
+    augmentation.add_argument('--gaussian_noise_params', type=str, default='0.01,0.05,0.5')     #1: 0.005,0.02,0.3 #2: 0.01,0.05,0.5 #3: 0.02,0.1,0.8
+    augmentation.add_argument('--pitch_shift_params', type=str, default='-1,1,0.3')             #1: -1,1,0.3       #2: 4,4,0.5       #3: -6,6,0.8
+    augmentation.add_argument('--time_stretch_params', type=str, default='0.7,1.5,0.8')         #1: 0.95,1.05,0.3  #2: 0.8,1.25,0.5  #3: 0.7,1.5,0.8
+
     augmentation.add_argument('--spec_aug',  type=str, default='specaugment', help='Name of the spectrogram augmentation')
 
     # Logging Parameters
@@ -65,12 +69,13 @@ def parse_args():
     # Ablation Parameters
     ablation_group = parser.add_argument_group('Ablation Parameters')
     ablation_group.add_argument('--ablation', action='store_true', help='Enable ablation studies to override default settings')
-    ablation_group.add_argument('--specaugment_params', type=str, default='64,2,8,2', # 32,1,4,1 # 64,2,8,2 # 128,4,16,4
+    ablation_group.add_argument('--specaugment_params', type=str, default='128,4,16,4', # 32,1,4,1 # 64,2,8,2 # 128,4,16,4
                                 help='Comma-separated values: time_drop_width,time_stripes_num,freq_drop_width,freq_stripes_num')
-    ablation_group.add_argument('--diffres_params', type=str, default='0.60,False', # 0.10,False # 0.60,False # 0.90,False
-                                help='Comma-separated values: dimension_reduction_rate,learn_pos_emb (True/False)')
-    ablation_group.add_argument('--specmix_params', type=str, default='0.5,8,16,2,2', # 0.3,4,8,1,1 # 0.5,8,16,2,2 # 0.7,16,32,4,4
+    ablation_group.add_argument('--specmix_params', type=str, default='0.3,4,8,1,1', # 0.3,4,8,1,1 # 0.5,8,16,2,2 # 0.7,16,32,4,4
                                 help='Comma-separated values: prob,min_band_size,max_band_size,max_frequency_bands,max_time_bands')
+    
+    
+    
     ablation_group.add_argument('--noise', action='store_true', help='if adding real-world noise - Poisson segment additive mixing')
     ablation_group.add_argument('--noise_segment_ratio', type=float, default=0.1, help='# inject noise in ratio of the audio length')
     

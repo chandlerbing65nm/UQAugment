@@ -8,6 +8,7 @@ import math
 import time
 import logging
 import matplotlib.pyplot as plt
+import ipdb
 
 import torch
 torch.backends.cudnn.benchmark=True
@@ -63,9 +64,15 @@ class SpecAugmenter(nn.Module):
         if spec_aug == 'specaugment':
             if self.training:
                 x = self.specaugment(x)
+            elif self.args.tta:
+                x = self.specaugment(x)
 
         elif spec_aug == 'specmix':
             if self.training:
+                x, rn_indices, lam = self.specmix(x)
+                output_dict['rn_indices'] = rn_indices
+                output_dict['mixup_lambda'] = lam
+            elif self.args.tta:
                 x, rn_indices, lam = self.specmix(x)
                 output_dict['rn_indices'] = rn_indices
                 output_dict['mixup_lambda'] = lam

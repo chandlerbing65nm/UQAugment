@@ -78,5 +78,7 @@ def parse_args():
     
     ablation_group.add_argument('--noise', action='store_true', help='if adding real-world noise - Poisson segment additive mixing')
     ablation_group.add_argument('--noise_segment_ratio', type=float, default=0.1, help='# inject noise in ratio of the audio length')
-    
+
+    ablation_group.add_argument('--tta', action='store_true', help='for test time augmentation')
+
     return parser.parse_args()

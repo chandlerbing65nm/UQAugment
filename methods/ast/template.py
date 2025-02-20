@@ -93,10 +93,16 @@ class SpecAugmenter(nn.Module):
             # Standard SpecAugmentation
             if training:
                 x = self.specaugment(x)
+            elif self.args.tta:
+                x = self.specaugment(x)
             x = x.squeeze(1)
         elif spec_aug == 'specmix':
             # SpecMix augmentation
             if training:
+                x, rn_indices, lam = self.specmix(x)
+                output_dict['rn_indices'] = rn_indices
+                output_dict['mixup_lambda'] = lam
+            elif self.args.tta:
                 x, rn_indices, lam = self.specmix(x)
                 output_dict['rn_indices'] = rn_indices
                 output_dict['mixup_lambda'] = lam

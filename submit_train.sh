@@ -10,7 +10,7 @@
 #SBATCH --partition=standard-g            
 #SBATCH --time=24:00:00           
 #SBATCH --account=project_465001389
-#SBATCH --output=/users/doloriel/work/Repo/FrameMixer/logs/uqaugment/mrsffia/panns_cnn6/time_stretch.out
+#SBATCH --output=/users/doloriel/work/Repo/FrameMixer/logs/uqaugment/mrsffia/ast/time_stretch.out
 
 # Load necessary modules (if required)
 conda init
@@ -42,7 +42,7 @@ python train.py \
     --wandb_mode "offline" \
     --dataset mrsffia \
     --data_path /scratch/project_465001389/chandler_scratch/Datasets/mrsffia \
-    --model_name "panns_cnn6" \
+    --model_name "ast" \
     --spec_aug "none" \
     --num_classes 4 \
     --sample_rate 22050 \

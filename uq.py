@@ -7,6 +7,7 @@ from sklearn.metrics import average_precision_score, accuracy_score, f1_score
 from sklearn.preprocessing import label_binarize
 from tqdm import tqdm
 from pprint import pprint
+import ipdb
 
 from config.config import parse_args
 from methods.model_selection import get_model
@@ -79,7 +80,7 @@ def compute_nll(probs, labels):
 
 def save_results(args, test_acc, test_map, test_f1, ece, nll):
     """Save test results to a file."""
-    results_dir = 'results/'
+    results_dir = 'results/uqaugment/'
     if args.ablation:
         save_dir = os.path.join(results_dir, f'ablation/{args.spec_aug}')
         os.makedirs(save_dir, exist_ok=True)
@@ -109,9 +110,19 @@ def save_results(args, test_acc, test_map, test_f1, ece, nll):
         params_str += f"_abl-{args.spec_aug}_{ablation_params}"
 
     # Add audiomentations parameters if applicable
-    if hasattr(args, 'audiomentations') and args.audiomentations:
+    if args.audiomentations:
         audiomentations_str = "-".join(args.audiomentations)
         params_str += f"_audioment-{audiomentations_str}"
+        
+        if args.ablation:
+            # Append additional parameters if specific augmentations are chosen
+            if 'gaussian_noise' in args.audiomentations:
+                params_str += f"_gaussian_noise_params-{args.gaussian_noise_params}"
+            if 'pitch_shift' in args.audiomentations:
+                params_str += f"_pitch_shift_params-{args.pitch_shift_params}"
+            if 'time_stretch' in args.audiomentations:
+                params_str += f"_time_stretch_params-{args.time_stretch_params}"
+
 
     # Add noise toggle note if both ablation and noise are True
     if args.ablation and args.noise:
@@ -153,8 +164,9 @@ def main():
     args = parse_args()
 
     # You can customize this to an argument if you'd like
-    # (4) Suggest how many MC Dropout runs for UQ. Let's pick 20 by default.
-    num_mc_runs = 20
+    # how many MC Dropout runs for UQ. Let's pick 20 by default.
+    # If num_mc_runs = 1, it means TTA is used not MCDropout
+    num_mc_runs = 1
 
     # Device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -162,7 +174,8 @@ def main():
     # Print arguments
     print("Arguments:")
     pprint(vars(args))
-    print(f"Recommended MC Dropout runs for UQ = {num_mc_runs} (can be adjusted)")
+    print(f"MC Dropout runs for UQ = {num_mc_runs} (can be adjusted)")
+    print(f"If num_mc_runs = 1, it means TTA is used not MCDropout")
 
     # Initialize model
     model = get_model(args).to(device)
@@ -213,11 +226,13 @@ def main():
 
             # (5) Perform MC Dropout by multiple forward passes in training mode
             mc_preds = []
+            model.eval()
             for _ in range(num_mc_runs):
-                model.train()  # ensure dropout is active
-                # (2) Check if self.training is True
+
                 if model.training:
-                    print("Dropout is active...")
+                    print("MC Dropout is active...")
+                elif num_mc_runs == 1:
+                    print("TTA is active...")
                 else:
                     raise ValueError('self.training==False')
 

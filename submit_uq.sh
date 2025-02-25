@@ -16,8 +16,8 @@ python uq.py \
     --batch_size 200 \
     --dataset mrsffia \
     --data_path /scratch/project_465001389/chandler_scratch/Datasets/mrsffia \
-    --checkpoint /scratch/project_465001389/chandler_scratch/Projects/FrameMixer/checkpoints_uq/mrsffia_logmel_ast_specmix_best_map_dur-3.0_sr-22050_win-1024_hop-512_mel-64_fmin-1_fmax-14000_cls-4_seed-20_bs-200_epoch-500_loss-ce.pth \
-    --model_name "panns_cnn6" \
+    --checkpoint /scratch/project_465001389/chandler_scratch/Projects/FrameMixer/checkpoints_uq/mrsffia_logmel_ast_none_best_map_dur-3.0_sr-22050_win-1024_hop-512_mel-64_fmin-1_fmax-14000_cls-4_seed-20_bs-200_epoch-500_loss-ce_audioment-pitch_shift.pth \
+    --model_name "ast" \
     --num_classes 4 \
     --sample_rate 22050 \
     --window_size 1024 \

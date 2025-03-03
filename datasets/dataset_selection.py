@@ -82,7 +82,7 @@ def get_dataloaders(args, transform):
             seed=args.seed,
             drop_last=False,
             data_path=args.data_path,
-            transform=transform 
+            transform=None 
         )
     else:
         raise ValueError(f"Unsupported dataset: {args.dataset}")

@@ -107,7 +107,7 @@ def main(args):
     _, train_loader, _, val_loader = get_dataloaders(args, transform)
 
     # Process all batches
-    for batch in tqdm(train_loader):
+    for batch in tqdm(val_loader):
         inputs = batch['waveform'].to(device)  # Ensure data is on the same device
 
         # Apply spectrogram and log-mel extraction
@@ -178,7 +178,7 @@ if __name__ == "__main__":
         batch_size=200,
         dataset='mrsffia',
         data_path='/scratch/project_465001389/chandler_scratch/Datasets/mrsffia',
-        spec_aug="specmix", # fma, diffres, specaugment, specmix
+        spec_aug="fma", # fma, diffres, specaugment, specmix
         num_classes=4,
         sample_rate=22050,
         window_size=1024,

@@ -1,36 +1,6 @@
-import os
-import ssl
 import numpy as np
-import torch
-from torch.utils.data import DataLoader
-from sklearn.metrics import average_precision_score, accuracy_score, f1_score
-from sklearn.preprocessing import label_binarize
+import os
 from tqdm import tqdm
-from pprint import pprint
-import ipdb
-
-from config.config import parse_args
-from methods.model_selection import get_model
-from transforms.audio_transforms import get_transforms
-from datasets.dataset_selection import get_dataloaders
-
-# Disable SSL verification
-ssl._create_default_https_context = ssl._create_unverified_context
-
-import warnings
-from datasets.noise import get_dataloader as noise_loader
-
-warnings.filterwarnings("ignore", category=UserWarning)
-
-def load_checkpoint(model, checkpoint_path):
-    """Load model weights from the checkpoint."""
-    if os.path.isfile(checkpoint_path):
-        print(f"Loading checkpoint from {checkpoint_path}...")
-        state_dict = torch.load(checkpoint_path, map_location="cpu")
-        model.load_state_dict(state_dict)  # No 'model_state_dict' key
-        print("Checkpoint loaded successfully.")
-    else:
-        raise FileNotFoundError(f"Checkpoint not found at {checkpoint_path}")
 
 def compute_ece(probs, labels, n_bins=10):
     """
@@ -42,7 +12,6 @@ def compute_ece(probs, labels, n_bins=10):
     Returns:
         float: The ECE value.
     """
-    # For each sample, the predicted confidence is max(prob)
     confidences = probs.max(axis=1)
     predictions = probs.argmax(axis=1)
     accuracies = (predictions == labels)
@@ -51,9 +20,7 @@ def compute_ece(probs, labels, n_bins=10):
     ece = 0.0
 
     for i in range(n_bins):
-        # Bin boundaries
-        bin_lower, bin_upper = bins[i], bins[i+1]
-        # Indices for samples whose confidence falls into this bin
+        bin_lower, bin_upper = bins[i], bins[i + 1]
         in_bin = np.where((confidences > bin_lower) & (confidences <= bin_upper))[0]
         if len(in_bin) > 0:
             bin_accuracy = np.mean(accuracies[in_bin])
@@ -72,210 +39,94 @@ def compute_nll(probs, labels):
     Returns:
         float: The average NLL across all samples.
     """
-    # For each sample i, the predicted probability for the true class is probs[i, labels[i]]
     eps = 1e-12  # for numerical stability
     true_class_probs = probs[np.arange(len(labels)), labels]
     nll = -np.mean(np.log(true_class_probs + eps))
     return nll
 
-def save_results(args, test_acc, test_map, test_f1, ece, nll):
-    """Save test results to a file."""
-    results_dir = 'results/uqaugment/'
-    if args.ablation:
-        save_dir = os.path.join(results_dir, f'ablation/{args.spec_aug}')
-        os.makedirs(save_dir, exist_ok=True)
-    else:
-        save_dir = results_dir
-
-    os.makedirs(results_dir, exist_ok=True)
-
-    # Construct a formatted string for additional arguments to include in the filename
-    params_str = (
-        f"dur-{args.target_duration}_sr-{args.sample_rate}_win-{args.window_size}_hop-{args.hop_size}_"
-        f"mel-{args.mel_bins}_fmin-{args.fmin}_fmax-{args.fmax or 'none'}_"
-        f"cls-{args.num_classes}_seed-{args.seed}_bs-{args.batch_size}_"
-        f"epoch-{args.max_epoch}_loss-{args.loss}"
-    )
-
-    # Add ablation parameters if applicable
-    if args.ablation:
-        if args.spec_aug == 'specaugment':
-            ablation_params = args.specaugment_params
-        elif args.spec_aug == 'diffres':
-            ablation_params = args.diffres_params
-        elif args.spec_aug == 'specmix':
-            ablation_params = args.specmix_params
-        else:
-            ablation_params = "unknown"
-        params_str += f"_abl-{args.spec_aug}_{ablation_params}"
-
-    # Add audiomentations parameters if applicable
-    if args.audiomentations:
-        audiomentations_str = "-".join(args.audiomentations)
-        params_str += f"_audioment-{audiomentations_str}"
-        
-        if args.ablation:
-            # Append additional parameters if specific augmentations are chosen
-            if 'gaussian_noise' in args.audiomentations:
-                params_str += f"_gaussian_noise_params-{args.gaussian_noise_params}"
-            if 'pitch_shift' in args.audiomentations:
-                params_str += f"_pitch_shift_params-{args.pitch_shift_params}"
-            if 'time_stretch' in args.audiomentations:
-                params_str += f"_time_stretch_params-{args.time_stretch_params}"
-
-
-    # Add noise toggle note if both ablation and noise are True
-    if args.ablation and args.noise:
-        params_str += f"_withnoise_seg-{args.noise_segment_ratio}"
-
-    # Results file path
-    results_path = f"{save_dir}/{args.dataset}_{args.frontend}_{args.model_name}_{args.spec_aug}_results_{params_str}.txt"
-
-    # Save results
-    with open(results_path, "w") as f:
-        f.write(f"Test Accuracy: {test_acc:.4f}\n")
-        f.write(f"Test mAP: {test_map:.4f}\n")
-        f.write(f"Test F1 Score: {test_f1:.4f}\n")
-        f.write(f"Expected Calibration Error (ECE): {ece:.4f}\n")
-        f.write(f"Negative Log-Likelihood (NLL): {nll:.4f}\n")
-
-    print(f"Results saved to {results_path}")
-
-def add_poisson_noise_in_segment(inputs, noise_batch, alpha=0.1, lam=100, segment_ratio=0.1):
+def load_and_concatenate_npz_files(folder_path):
     """
-    Adds noise to `inputs` in a localized segment for each sample in the batch.
+    Load and concatenate all_test_targets and all_mc_preds from all .npz files in the folder.
+    Args:
+        folder_path (str): Path to the folder containing .npz files.
+    Returns:
+        all_test_targets (ndarray): Concatenated true labels.
+        all_mc_preds (ndarray): Concatenated predicted probabilities.
+        file_names (list): List of file names for reference.
+        file_indices (list): List of indices indicating which file each sample belongs to.
     """
-    B, L = inputs.shape
-    poisson_offsets = torch.poisson(torch.full((B,), lam, dtype=torch.float, device=inputs.device))
-    poisson_offsets = torch.clamp(poisson_offsets, max=L-1)
-
-    seg_length = int(segment_ratio * L)
-    if seg_length < 1:
-        seg_length = 1  # at least 1 sample
-
-    for i in range(B):
-        start = int(poisson_offsets[i].item())
-        end = int(min(start + seg_length, L))
-        inputs[i, start:end] += alpha * noise_batch[i, start:end]
-
-    return inputs
-
-def main():
-    args = parse_args()
-
-    # You can customize this to an argument if you'd like
-    # how many MC Dropout runs for UQ. Let's pick 20 by default.
-    # If num_mc_runs = 1, it means TTA is used not MCDropout
-    num_mc_runs = 1
-
-    # Device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    # Print arguments
-    print("Arguments:")
-    pprint(vars(args))
-    print(f"MC Dropout runs for UQ = {num_mc_runs} (can be adjusted)")
-    print(f"If num_mc_runs = 1, it means TTA is used not MCDropout")
-
-    # Initialize model
-    model = get_model(args).to(device)
-
-    # Load trained weights
-    load_checkpoint(model, args.checkpoint)
-
-    # Get transforms
-    transform = get_transforms(args)
-
-    # Initialize test data loader
-    _, _, test_dataset, test_loader = get_dataloaders(args, transform)
-
-    # Noise data loaders
-    _, noisetest_loader = noise_loader(split='val',
-                                       batch_size=args.batch_size//10,
-                                       sample_rate=args.sample_rate,
-                                       shuffle=False, seed=args.seed,
-                                       drop_last=True, transform=None, args=args)
-    noise_iter = iter(noisetest_loader)
-
-    # We'll store predictions across the entire test set
-    # Then compute mean & std for uncertainty, plus ECE & NLL
+    file_names = [f for f in os.listdir(folder_path) if f.endswith(".npz")]
     all_test_targets = []
-    # We'll collect MC predictions so we can compute std dev
-    all_mc_preds = []  # each entry will be shape (B, C, num_mc_runs)
+    all_mc_preds = []
+    file_indices = []
 
-    # Evaluate in a no_grad block, but we will do .train() for dropout
-    with torch.no_grad():
-        for batch in test_loader:
-            inputs = batch['waveform'].to(device)
-            targets = batch['target'].to(device)
-            all_test_targets.append(targets.argmax(dim=-1).cpu().numpy())
+    for idx, file_name in enumerate(file_names):
+        file_path = os.path.join(folder_path, file_name)
+        data = np.load(file_path)
+        all_test_targets.append(data["all_test_targets"])
+        all_mc_preds.append(data["all_mc_preds"])
+        file_indices.extend([idx] * len(data["all_test_targets"]))
 
-            # Add noise if ablation & noise
-            if args.ablation and args.noise:
-                try:
-                    noise_batch = next(noise_iter)['waveform'].to(device)
-                except StopIteration:
-                    noise_iter = iter(noisetest_loader)
-                    noise_batch = next(noise_iter)['waveform'].to(device)
-
-                repeat_factor = (inputs.size(0) + noise_batch.size(0) - 1) // noise_batch.size(0)
-                noise_batch = noise_batch.repeat(repeat_factor, 1)[:inputs.size(0)]
-                lam = int(args.target_duration * args.sample_rate) // 2
-                segment_ratio = args.noise_segment_ratio
-                inputs = add_poisson_noise_in_segment(inputs, noise_batch, lam=lam, segment_ratio=segment_ratio)
-
-            # (5) Perform MC Dropout by multiple forward passes in training mode
-            mc_preds = []
-            model.eval()
-            for _ in range(num_mc_runs):
-
-                if model.training:
-                    print("MC Dropout is active...")
-                elif num_mc_runs == 1:
-                    print("TTA is active...")
-                else:
-                    raise ValueError('self.training==False')
-
-                outputs_run = model(inputs)['clipwise_output']
-                outputs_run = torch.softmax(outputs_run, dim=-1)
-                mc_preds.append(outputs_run.unsqueeze(-1))  # shape (B, C, 1)
-
-            # Concatenate along last dimension => shape (B, C, num_mc_runs)
-            mc_preds = torch.cat(mc_preds, dim=-1)  
-            all_mc_preds.append(mc_preds.cpu().numpy())
-
-    # Concatenate all targets
+    # Concatenate along the first axis (samples)
     all_test_targets = np.concatenate(all_test_targets, axis=0)
-    # Concatenate MC preds => shape (TotalSamples, C, num_mc_runs)
     all_mc_preds = np.concatenate(all_mc_preds, axis=0)
 
-    # Mean & STD over the MC dimension
-    # shape (TotalSamples, C)
-    mean_preds = all_mc_preds.mean(axis=-1)
-    std_preds = all_mc_preds.std(axis=-1)  # for your uncertainty measure (item 7)
+    return all_test_targets, all_mc_preds, file_names, file_indices
 
-    # One-hot for mAP
-    all_test_targets_one_hot = label_binarize(all_test_targets, classes=np.arange(args.num_classes))
+def compute_metrics_for_combinations(all_test_targets, all_mc_preds, file_names, file_indices):
+    """
+    Compute ECE and NLL for the full concatenated data and for all combinations where one .npz file is removed.
+    Args:
+        all_test_targets (ndarray): Concatenated true labels.
+        all_mc_preds (ndarray): Concatenated predicted probabilities.
+        file_names (list): List of file names for reference.
+        file_indices (list): List of indices indicating which file each sample belongs to.
+    """
+    # List of valid augmentation strings to search for
+    valid_augmentations = ["specaugment", "specmix", "gaussian_noise", "time_stretch", "pitch_shift"]
 
-    # Standard classification metrics from average predictions
-    test_acc = accuracy_score(all_test_targets, mean_preds.argmax(axis=-1))
-    test_map = average_precision_score(all_test_targets_one_hot, mean_preds, average='weighted')
-    test_f1 = f1_score(all_test_targets, mean_preds.argmax(axis=-1), average='weighted')
+    # Compute metrics for the full concatenated data
+    mean_preds = all_mc_preds.mean(axis=-1)  # Average over MC runs
+    ece_full = compute_ece(mean_preds, all_test_targets)
+    nll_full = compute_nll(mean_preds, all_test_targets)
+    print(f"All augmentation: ECE = {ece_full:.4f}, NLL = {nll_full:.4f}")
+    print("-" * 50)
 
-    # (8,9) ECE from the average predictions
-    ece = compute_ece(mean_preds, all_test_targets, n_bins=10)
+    # Compute metrics for all combinations where one .npz file is removed
+    for i, file_name in enumerate(file_names):
+        # Extract the augmentation name from the filename
+        found_augmentations = [aug for aug in valid_augmentations if aug in file_name]
 
-    # (10) NLL from the average predictions
-    nll = compute_nll(mean_preds, all_test_targets)
+        # Check if more than one augmentation is found
+        if len(found_augmentations) > 1:
+            raise ValueError(f"Filename '{file_name}' contains multiple augmentations: {found_augmentations}. Only one is allowed.")
+        elif len(found_augmentations) == 0:
+            raise ValueError(f"Filename '{file_name}' does not contain any valid augmentation. Expected one of: {valid_augmentations}.")
+        else:
+            augmentation_name = found_augmentations[0]
 
-    print(f"Test Accuracy: {test_acc:.4f}")
-    print(f"Test mAP: {test_map:.4f}")
-    print(f"Test F1 Score: {test_f1:.4f}")
-    print(f"Expected Calibration Error (ECE): {ece:.4f}")
-    print(f"Negative Log-Likelihood (NLL): {nll:.4f}")
+        # Create a mask to exclude samples from the i-th file
+        mask = np.array(file_indices) != i
 
-    # Save results
-    # save_results(args, test_acc, test_map, test_f1, ece, nll)
+        # Apply the mask to exclude the i-th file's data
+        test_targets_subset = all_test_targets[mask]
+        mc_preds_subset = all_mc_preds[mask]
 
-if __name__ == '__main__':
-    main()
+        # Compute metrics for the subset
+        mean_preds_subset = mc_preds_subset.mean(axis=-1)
+        ece_subset = compute_ece(mean_preds_subset, test_targets_subset)
+        nll_subset = compute_nll(mean_preds_subset, test_targets_subset)
+
+        print(f"Removed augmentation: {augmentation_name}")
+        print(f"Subset: ECE = {ece_subset:.4f}, NLL = {nll_subset:.4f}")
+        print("-" * 50)
+
+if __name__ == "__main__":
+    # User-defined folder path
+    folder_path = "/users/doloriel/work/Repo/FrameMixer/probs/mrsffia/panns_mobilenetv2"
+
+    # Load and concatenate data from all .npz files
+    all_test_targets, all_mc_preds, file_names, file_indices = load_and_concatenate_npz_files(folder_path)
+
+    # Compute metrics for the full dataset and all combinations
+    compute_metrics_for_combinations(all_test_targets, all_mc_preds, file_names, file_indices)

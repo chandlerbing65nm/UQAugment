@@ -8,6 +8,7 @@ misc/
 plots/
 wandb/
 weights/
+probs/
 logs/
 __pycache__/
 *.pkl

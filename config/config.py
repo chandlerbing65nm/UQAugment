@@ -55,7 +55,7 @@ def parse_args():
     augmentation.add_argument('--pitch_shift_params', type=str, default='-1,1,0.3')             #1: -1,1,0.3       #2: 4,4,0.5       #3: -6,6,0.8
     augmentation.add_argument('--time_stretch_params', type=str, default='0.7,1.5,0.8')         #1: 0.95,1.05,0.3  #2: 0.8,1.25,0.5  #3: 0.7,1.5,0.8
 
-    augmentation.add_argument('--spec_aug',  type=str, default='specaugment', help='Name of the spectrogram augmentation')
+    augmentation.add_argument('--spec_aug',  type=str, default='none', help='Name of the spectrogram augmentation')
 
     # Logging Parameters
     logging_group = parser.add_argument_group('Logging Parameters')

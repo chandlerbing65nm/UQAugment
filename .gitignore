@@ -9,6 +9,7 @@ plots/
 wandb/
 weights/
 probs/
+probs_noise_0.1/
 logs/
 __pycache__/
 *.pkl

@@ -121,9 +121,13 @@ def compute_metrics_for_combinations(all_test_targets, all_mc_preds, file_names,
         print(f"Subset: ECE = {ece_subset:.4f}, NLL = {nll_subset:.4f}")
         print("-" * 50)
 
+# ast
+# panns_cnn6
+# panns_mobilenetv2
+
 if __name__ == "__main__":
     # User-defined folder path
-    folder_path = "/users/doloriel/work/Repo/FrameMixer/probs/mrsffia/panns_mobilenetv2"
+    folder_path = "/users/doloriel/work/Repo/FrameMixer/probs_noise_0.1/mrsffia/panns_mobilenetv2"
 
     # Load and concatenate data from all .npz files
     all_test_targets, all_mc_preds, file_names, file_indices = load_and_concatenate_npz_files(folder_path)

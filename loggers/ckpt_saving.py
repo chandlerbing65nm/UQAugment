@@ -41,6 +41,10 @@ def save_checkpoint(model, args, best_val_map, best_val_acc, current_val_map, cu
         
         if args.ablation:
             # Append additional parameters if specific augmentations are chosen
+            if 'time_mask' in args.audiomentations:
+                params_str += f"_time_mask_params-{args.time_mask_params}"
+            if 'band_stop_filter' in args.audiomentations:
+                params_str += f"_band_stop_filter_params-{args.band_stop_filter_params}"
             if 'gaussian_noise' in args.audiomentations:
                 params_str += f"_gaussian_noise_params-{args.gaussian_noise_params}"
             if 'pitch_shift' in args.audiomentations:

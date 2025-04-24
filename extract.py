@@ -81,25 +81,6 @@ def save_probabilities(args, all_test_targets, all_mc_preds):
     np.savez(probs_path, all_test_targets=all_test_targets, all_mc_preds=all_mc_preds)
     print(f"Probabilities saved to {probs_path}")
 
-def add_poisson_noise_in_segment(inputs, noise_batch, alpha=0.1, lam=100, segment_ratio=0.1):
-    """
-    Adds noise to `inputs` in a localized segment for each sample in the batch.
-    """
-    B, L = inputs.shape
-    poisson_offsets = torch.poisson(torch.full((B,), lam, dtype=torch.float, device=inputs.device))
-    poisson_offsets = torch.clamp(poisson_offsets, max=L-1)
-
-    seg_length = int(segment_ratio * L)
-    if seg_length < 1:
-        seg_length = 1  # at least 1 sample
-
-    for i in range(B):
-        start = int(poisson_offsets[i].item())
-        end = int(min(start + seg_length, L))
-        inputs[i, start:end] += alpha * noise_batch[i, start:end]
-
-    return inputs
-
 def main():
     args = parse_args()
 
@@ -126,17 +107,6 @@ def main():
     # Get transforms
     transform = get_transforms(args)
 
-    # Initialize test data loader
-    _, _, test_dataset, test_loader = get_dataloaders(args, transform)
-
-    # Noise data loaders
-    _, noisetest_loader = noise_loader(split='val',
-                                       batch_size=args.batch_size//10,
-                                       sample_rate=args.sample_rate,
-                                       shuffle=False, seed=args.seed,
-                                       drop_last=True, transform=None, args=args)
-    noise_iter = iter(noisetest_loader)
-
     # We'll store predictions across the entire test set
     all_test_targets = []
     all_mc_preds = []  # each entry will be shape (B, C, num_mc_runs)
@@ -147,20 +117,6 @@ def main():
             inputs = batch['waveform'].to(device)
             targets = batch['target'].to(device)
             all_test_targets.append(targets.argmax(dim=-1).cpu().numpy())
-
-            # Add noise if ablation & noise
-            if args.ablation and args.noise:
-                try:
-                    noise_batch = next(noise_iter)['waveform'].to(device)
-                except StopIteration:
-                    noise_iter = iter(noisetest_loader)
-                    noise_batch = next(noise_iter)['waveform'].to(device)
-
-                repeat_factor = (inputs.size(0) + noise_batch.size(0) - 1) // noise_batch.size(0)
-                noise_batch = noise_batch.repeat(repeat_factor, 1)[:inputs.size(0)]
-                lam = int(args.target_duration * args.sample_rate) // 2
-                segment_ratio = args.noise_segment_ratio
-                inputs = add_poisson_noise_in_segment(inputs, noise_batch, lam=lam, segment_ratio=segment_ratio)
 
             # Perform MC Dropout by multiple forward passes in training mode
             mc_preds = []

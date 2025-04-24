@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=uqaugment         
+#SBATCH --job-name=uqfishaugment         
 #SBATCH --ntasks=1                 
 #SBATCH --cpus-per-task=4         
 #SBATCH --ntasks-per-node=1
@@ -10,12 +10,12 @@
 #SBATCH --partition=small-g            
 #SBATCH --time=24:00:00           
 #SBATCH --account=project_465001389
-#SBATCH --output=/users/doloriel/work/Repo/UQAugment/logs/ablation/panns_cnn6/time_mask-1.out
+#SBATCH --output=/users/doloriel/work/Repo/UQFishAugment/logs/ablation/affia3k/panns_cnn6/band_stop_filter-3.out
 
 # Load necessary modules (if required)
 conda init
 conda activate framemixer
-cd /users/doloriel/work/Repo/UQAugment
+cd /users/doloriel/work/Repo/UQFishAugment
 
 # none
 # time_mask
@@ -28,8 +28,8 @@ cd /users/doloriel/work/Repo/UQAugment
 # panns_mobilenetv2
 # ast
 
-# --time_mask_params        \ #1: 0.01,0.05,0.3             #2: 0.05,0.15,0.5               #3: 0.1,0.3,0.8
-# --band_stop_filter_params \ #1: 200,1000,0.3              #2: 500,3000,0.5                #3: 1000,6000,0.8
+# --time_mask_params        \ #1: 0.01,0.05,0.3             #2: 0.05,0.15,0.5 (default)     #3: 0.1,0.3,0.8 
+# --band_stop_filter_params \ #1: 200,1000,0.3              #2: 500,3000,0.5                #3: 1000,6000,0.8 (default)
 # --gaussian_noise_params   \ #1: 0.005,0.02,0.3            #2: 0.01,0.05,0.5 (default)     #3: 0.02,0.1,0.8
 # --pitch_shift_params      \ #1: -1,1,0.3 (default)        #2: 4,4,0.5                     #3: -6,6,0.8
 # --time_stretch_params     \ #1: 0.95,1.05,0.3             #2: 0.8,1.25,0.5                #3: 0.7,1.5,0.8 (default)
@@ -71,8 +71,7 @@ python train.py \
     --fmin 50 \
     --target_duration 2 \
     --ablation \
-    --audiomentations time_mask \
-    --time_mask_params 0.01,0.05,0.3 \
+    --audiomentations band_stop_filter \
+    --band_stop_filter_params 1000,6000,0.8 \
     # --ablation \
     # --time_stretch_params 0.7,1.5,0.8 \
-    # --specmix_params 0.7,16,32,4,4

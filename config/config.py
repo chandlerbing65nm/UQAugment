@@ -48,11 +48,11 @@ def parse_args():
     parser.add_argument(
         '--audiomentations',
         nargs='+',
-        choices=['time_mask', 'spec_mask', 'gaussian_noise', 'gaussian_snr', 'pitch_shift', 'time_stretch'],
+        choices=['time_mask', 'gaussian_noise', 'band_stop_filter', 'pitch_shift', 'time_stretch'],
         help='List of audiomentation effects to apply. Choose from gaussian_noise, pitch_shift, time_stretch.'
     )
-    augmentation.add_argument('--time_mask_params', type=str, default='0.01,0.05,0.5')          #1: 0.005,0.02,0.3
-    augmentation.add_argument('--band_stop_filter_params', type=str, default='0.01,0.05,0.5')
+    augmentation.add_argument('--time_mask_params', type=str, default='0.05,0.15,0.5')          #1: 0.01,0.05,0.3  #2: 0.05,0.15,0.5 #3: 0.1,0.3,0.8 
+    augmentation.add_argument('--band_stop_filter_params', type=str, default='1000,6000,0.8')   #1: 200,1000,0.3   #2: 500,3000,0.5  #3: 1000,6000,0.8
     augmentation.add_argument('--gaussian_noise_params', type=str, default='0.01,0.05,0.5')     #1: 0.005,0.02,0.3 #2: 0.01,0.05,0.5 #3: 0.02,0.1,0.8
     augmentation.add_argument('--pitch_shift_params', type=str, default='-1,1,0.3')             #1: -1,1,0.3       #2: 4,4,0.5       #3: -6,6,0.8
     augmentation.add_argument('--time_stretch_params', type=str, default='0.7,1.5,0.8')         #1: 0.95,1.05,0.3  #2: 0.8,1.25,0.5  #3: 0.7,1.5,0.8

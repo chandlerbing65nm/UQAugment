@@ -3,6 +3,7 @@ import torch
 import os
 from tqdm import tqdm
 import random
+from scipy.spatial import KDTree
 
 # Set device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -84,6 +85,19 @@ class PreferenceBasedEnsembleOptimizer:
         self.best_ece = float('inf')
         self.best_nll = float('inf')
         
+        # For binned state comparison
+        self.weight_bins = {}
+        self.bin_size = 0.05  # Round weights to 2 decimal places
+        
+        # For scalarization
+        self.ece_weight = 0.7  # Weight for ECE in scalarized objective
+        self.nll_weight = 0.3  # Weight for NLL in scalarized objective
+        
+        # For decaying exploration
+        self.initial_exploration = 0.5
+        self.final_exploration = 0.01
+        self.exploration_decay = 0.99
+        
     def _create_action_space(self):
         """Create action space as small weight adjustments"""
         actions = []
@@ -105,6 +119,11 @@ class PreferenceBasedEnsembleOptimizer:
             
         return actions
     
+    def _get_binned_state(self, weights):
+        """Round weights to create binned states for comparison"""
+        binned = torch.round(weights / self.bin_size) * self.bin_size
+        return tuple(binned.cpu().numpy().round(2))
+    
     def evaluate_weights(self, weights):
         """Evaluate current weights by computing ECE and NLL"""
         weights = weights / weights.sum()  # Ensure normalization
@@ -122,19 +141,34 @@ class PreferenceBasedEnsembleOptimizer:
         
         return ece, nll
     
-    def generate_trajectory(self, max_steps=10):
-        """Generate a trajectory of weight adjustments"""
+    def scalarized_objective(self, ece, nll):
+        """Combine ECE and NLL into a single scalar objective"""
+        # Normalize metrics (assuming typical ranges)
+        norm_ece = ece/0.2  # Assuming ECE typically < 0.2
+        norm_nll = nll/2.0  # Assuming NLL typically < 2.0
+        return self.ece_weight * norm_ece + self.nll_weight * norm_nll
+    
+    def generate_trajectory(self, max_steps=10, iteration=0):
+        """Generate trajectory with decaying exploration"""
         weights = torch.ones(self.n_models, device=self.device) / self.n_models
         trajectory = []
         
+        # Calculate current exploration rate
+        exploration_rate = max(
+            self.final_exploration,
+            self.initial_exploration * (self.exploration_decay ** iteration)
+        )
+        
         for _ in range(max_steps):
-            # Sample action from policy
-            action_idx = torch.multinomial(self.policy, 1).item()
-            adjustment = self.action_space[action_idx]
+            # Epsilon-greedy exploration with decay
+            if random.random() < exploration_rate:
+                action_idx = random.randint(0, self.n_actions - 1)
+            else:
+                action_idx = torch.multinomial(self.policy, 1).item()
             
-            # Apply action
+            adjustment = self.action_space[action_idx]
             new_weights = weights + adjustment
-            new_weights = torch.clamp(new_weights, min=0.01)  # Prevent zero weights
+            new_weights = torch.clamp(new_weights, min=0.01)
             new_weights = new_weights / new_weights.sum()
             
             trajectory.append((weights.clone(), action_idx, new_weights.clone()))
@@ -142,42 +176,50 @@ class PreferenceBasedEnsembleOptimizer:
         
         return trajectory
     
-    def update_policy(self, trajectories, preferences, alpha=0.1):
-        """Update policy based on trajectory preferences"""
-        for (w1, a1, _), (w2, a2, _) in preferences:
-            # Estimate Pr(a1 > a2 | w1 ≈ w2)
-            # Here we simplify by assuming decisive actions are those that lead to better metrics
-            # In practice, you'd compare the full trajectories' metrics
-            ece1, nll1 = self.evaluate_weights(w1)
-            ece2, nll2 = self.evaluate_weights(w2)
+    def update_policy(self, trajectories, preferences):
+        """Update policy using softmax normalization of action preferences"""
+        # Update action preferences based on decisive states
+        for (traj1, traj2) in preferences:
+            # Get binned states for both trajectories
+            binned_states1 = [self._get_binned_state(w) for w, _, _ in traj1]
+            binned_states2 = [self._get_binned_state(w) for w, _, _ in traj2]
             
-            if ece1 < ece2 and nll1 < nll2:
-                self.action_preferences[a1, a2] = (1 - alpha) * self.action_preferences[a1, a2] + alpha * 1.0
-                self.action_preferences[a2, a1] = 1.0 - self.action_preferences[a1, a2]
+            # Find overlapping binned states
+            overlapping_bins = set(binned_states1) & set(binned_states2)
+            
+            for bin_state in overlapping_bins:
+                # Find the first occurrence in each trajectory
+                idx1 = next(i for i, (w, _, _) in enumerate(traj1) 
+                         if self._get_binned_state(w) == bin_state)
+                idx2 = next(i for i, (w, _, _) in enumerate(traj2) 
+                         if self._get_binned_state(w) == bin_state)
+                
+                a1 = traj1[idx1][1]  # Action index in trajectory 1
+                a2 = traj2[idx2][1]  # Action index in trajectory 2
+                
+                # Update preference
+                self.action_preferences[a1, a2] += 0.1
+                self.action_preferences[a2, a1] = max(0, self.action_preferences[a2, a1] - 0.1)
         
-        # Update policy using pairwise coupling (simplified)
-        for a in range(self.n_actions):
-            self.policy[a] = (1 / (self.n_actions - 1)) * torch.sum(
-                1 / (self.action_preferences[a, :] + 1e-8)) - (self.n_actions - 2)
-        
-        # Normalize policy
-        self.policy = torch.clamp(self.policy, min=0.01)
-        self.policy = self.policy / self.policy.sum()
+        # Direct softmax normalization (replaces pairwise coupling)
+        self.policy = torch.softmax(self.action_preferences.mean(dim=1), dim=0)
     
     def optimize(self, n_iterations=20, n_trajectories=5, max_steps=5):
         """Run the optimization process"""
-        for _ in tqdm(range(n_iterations), desc="Optimizing ensemble weights"):
+        for iteration in tqdm(range(n_iterations), desc="Optimizing ensemble weights"):
             # Generate trajectories
-            trajectories = [self.generate_trajectory(max_steps) for _ in range(n_trajectories)]
+            trajectories = [self.generate_trajectory(max_steps, iteration) 
+                          for _ in range(n_trajectories)]
             
             # Evaluate trajectories and create preferences
             preferences = []
-            traj_metrics = []
+            traj_scores = []
             
             for traj in trajectories:
                 final_weights = traj[-1][2]  # Get final weights
                 ece, nll = self.evaluate_weights(final_weights)
-                traj_metrics.append((ece, nll))
+                score = self.scalarized_objective(ece, nll)
+                traj_scores.append(score)
                 
                 # Update best weights if improved
                 if ece < self.best_ece and nll < self.best_nll:
@@ -185,16 +227,13 @@ class PreferenceBasedEnsembleOptimizer:
                     self.best_nll = nll
                     self.best_weights = final_weights.clone()
             
-            # Create pairwise preferences based on metrics
+            # Generate preferences based on scalarized scores
             for i in range(len(trajectories)):
                 for j in range(i+1, len(trajectories)):
-                    ece_i, nll_i = traj_metrics[i]
-                    ece_j, nll_j = traj_metrics[j]
-                    
-                    if ece_i < ece_j and nll_i < nll_j:
-                        preferences.append((trajectories[i][-1], trajectories[j][-1]))
-                    elif ece_j < ece_i and nll_j < nll_i:
-                        preferences.append((trajectories[j][-1], trajectories[i][-1]))
+                    if traj_scores[i] < traj_scores[j]:
+                        preferences.append((trajectories[i], trajectories[j]))
+                    elif traj_scores[j] < traj_scores[i]:
+                        preferences.append((trajectories[j], trajectories[i]))
             
             # Update policy if we have preferences
             if preferences:
@@ -208,7 +247,7 @@ class PreferenceBasedEnsembleOptimizer:
 
 if __name__ == "__main__":
     # User-defined folder path
-    folder_path = "/users/doloriel/work/Repo/UQFishAugment/probs/affia3k/panns_mobilenetv2"
+    folder_path = "/users/doloriel/work/Repo/UQFishAugment/probs/affia3k/panns_cnn6"
 
     # Load data
     test_targets_list, mc_preds_list, file_names = load_npz_files_for_ensembling(folder_path)
@@ -223,7 +262,7 @@ if __name__ == "__main__":
     optimizer = PreferenceBasedEnsembleOptimizer(mc_preds_list, all_test_targets, len(file_names), device=device)
 
     # Run optimization
-    best_weights = optimizer.optimize(n_iterations=1000, n_trajectories=5, max_steps=5)
+    best_weights = optimizer.optimize(n_iterations=300, n_trajectories=10, max_steps=10)
 
     # Evaluate best weights
     ensemble_preds = np.zeros_like(mc_preds_list[0].mean(axis=-1))

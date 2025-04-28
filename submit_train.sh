@@ -10,7 +10,7 @@
 #SBATCH --partition=small-g            
 #SBATCH --time=24:00:00           
 #SBATCH --account=project_465001389
-#SBATCH --output=/users/doloriel/work/Repo/UQFishAugment/logs/ablation/affia3k/panns_cnn6/band_stop_filter-3.out
+#SBATCH --output=/users/doloriel/work/Repo/UQFishAugment/logs/mrsffia/panns_cnn6/time_mask.out
 
 # Load necessary modules (if required)
 conda init
@@ -35,43 +35,45 @@ cd /users/doloriel/work/Repo/UQFishAugment
 # --time_stretch_params     \ #1: 0.95,1.05,0.3             #2: 0.8,1.25,0.5                #3: 0.7,1.5,0.8 (default)
 
 
-# ############################ MRS-FFIA ############################
-# python train.py \
-#     --batch_size 200 \
-#     --max_epoch 500 \
-#     --wandb_mode "offline" \
-#     --dataset mrsffia \
-#     --data_path /scratch/project_465001389/chandler_scratch/Datasets/mrsffia \
-#     --model_name "ast" \
-#     --num_classes 4 \
-#     --sample_rate 22050 \
-#     --window_size 1024 \
-#     --hop_size 512 \
-#     --mel_bins 64 \
-#     --fmin 1 \
-#     --fmax 14000 \
-#     --target_duration 3 \
-#     --audiomentations time_stretch \
-#     # --ablation \
-
-
-############################ AFFIA3K ############################
+############################ MRS-FFIA ############################
 python train.py \
     --batch_size 200 \
     --max_epoch 500 \
     --wandb_mode "offline" \
-    --dataset affia3k \
-    --data_path /scratch/project_465001389/chandler_scratch/Datasets/affia3k \
+    --dataset mrsffia \
+    --data_path /scratch/project_465001389/chandler_scratch/Datasets/mrsffia \
     --model_name "panns_cnn6" \
     --num_classes 4 \
-    --sample_rate 128000 \
-    --window_size 2048 \
-    --hop_size 1024 \
+    --sample_rate 22050 \
+    --window_size 1024 \
+    --hop_size 512 \
     --mel_bins 64 \
-    --fmin 50 \
-    --target_duration 2 \
-    --ablation \
-    --audiomentations band_stop_filter \
-    --band_stop_filter_params 1000,6000,0.8 \
+    --fmin 1 \
+    --fmax 14000 \
+    --target_duration 3 \
+    --audiomentations time_mask \
     # --ablation \
-    # --time_stretch_params 0.7,1.5,0.8 \
+
+
+# ############################ AFFIA3K ############################
+# python train.py \
+#     --batch_size 200 \
+#     --max_epoch 500 \
+#     --wandb_mode "offline" \
+#     --dataset affia3k \
+#     --data_path /scratch/project_465001389/chandler_scratch/Datasets/affia3k \
+#     --model_name "ast" \
+#     --num_classes 4 \
+#     --sample_rate 128000 \
+#     --window_size 2048 \
+#     --hop_size 1024 \
+#     --mel_bins 64 \
+#     --fmin 50 \
+#     --target_duration 2 \
+#     --audiomentations band_stop_filter \
+#     # --ablation \
+#     # --time_mask_params 0.05,0.15,0.5 \
+#     # --band_stop_filter_params 1000,6000,0.8 \
+#     # --gaussian_noise_params 0.01,0.05,0.5 \
+#     # --pitch_shift_params -1,1,0.3 \
+#     # --time_stretch_params 0.7,1.5,0.8 \

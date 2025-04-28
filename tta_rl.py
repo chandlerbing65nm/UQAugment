@@ -1,0 +1,276 @@
+import numpy as np
+import torch
+import os
+from tqdm import tqdm
+import random
+
+# Set device
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+torch.manual_seed(42)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(42)
+np.random.seed(42)
+random.seed(42)
+
+def compute_ece(probs, labels, n_bins=10):
+    """Compute Expected Calibration Error (ECE)"""
+    confidences = probs.max(axis=1)
+    predictions = probs.argmax(axis=1)
+    accuracies = (predictions == labels)
+
+    bins = np.linspace(0.0, 1.0, n_bins + 1)
+    ece = 0.0
+
+    for i in range(n_bins):
+        bin_lower, bin_upper = bins[i], bins[i + 1]
+        in_bin = np.where((confidences > bin_lower) & (confidences <= bin_upper))[0]
+        if len(in_bin) > 0:
+            bin_accuracy = np.mean(accuracies[in_bin])
+            bin_confidence = np.mean(confidences[in_bin])
+            bin_prob = len(in_bin) / len(probs)
+            ece += np.abs(bin_confidence - bin_accuracy) * bin_prob
+
+    return ece
+
+def compute_nll(probs, labels):
+    """Compute Negative Log-Likelihood (NLL)"""
+    eps = 1e-12
+    true_class_probs = probs[np.arange(len(labels)), labels]
+    nll = -np.mean(np.log(true_class_probs + eps))
+    return nll
+
+def load_npz_files_for_ensembling(folder_path):
+    """Load predictions and targets from .npz files"""
+    file_names = [f for f in os.listdir(folder_path) if f.endswith(".npz")]
+    test_targets_list = []
+    mc_preds_list = []
+
+    for file_name in file_names:
+        file_path = os.path.join(folder_path, file_name)
+        data = np.load(file_path)
+        test_targets_list.append(data["all_test_targets"])
+        mc_preds_list.append(data["all_mc_preds"])
+
+    return test_targets_list, mc_preds_list, file_names
+
+def check_test_target_consistency(test_targets_list, file_names):
+    """Verify all test targets are identical"""
+    reference_targets = test_targets_list[0]
+    for idx, current_targets in enumerate(test_targets_list[1:], start=1):
+        if not np.array_equal(reference_targets, current_targets):
+            raise ValueError(f"Mismatch in 'all_test_targets' between files '{file_names[0]}' and '{file_names[idx]}'.")
+    print("✅ All 'all_test_targets' arrays are identical across all augmentations.")
+
+class PreferenceBasedEnsembleOptimizer:
+    def __init__(self, mc_preds_list, test_targets, n_models, device='cuda'):
+        self.mc_preds_list = [torch.tensor(p, device=device) for p in mc_preds_list]
+        self.test_targets = torch.tensor(test_targets, device=device)
+        self.n_models = n_models
+        self.device = device
+        
+        # Initialize action space (small weight adjustments)
+        self.action_space = self._create_action_space()
+        self.n_actions = len(self.action_space)
+        
+        # Initialize policy (uniform probabilities)
+        self.policy = torch.ones((self.n_actions), device=device) / self.n_actions
+        
+        # Initialize action preferences
+        self.action_preferences = torch.ones((self.n_actions, self.n_actions), device=device) * 0.5
+        
+        # Store best weights and metrics
+        self.best_weights = torch.ones(n_models, device=device) / n_models
+        self.best_ece = float('inf')
+        self.best_nll = float('inf')
+        
+    def _create_action_space(self):
+        """Create action space as small weight adjustments"""
+        actions = []
+        step = 0.05  # Adjustment step size
+        
+        # Create actions that increase one weight and decrease others proportionally
+        for i in range(self.n_models):
+            action = torch.zeros(self.n_models, device=self.device)
+            action[i] = step
+            # Normalize to maintain sum=1
+            action = action - step/self.n_models
+            actions.append(action)
+            
+            # Also create actions that decrease weight
+            action = torch.zeros(self.n_models, device=self.device)
+            action[i] = -step
+            action = action + step/self.n_models
+            actions.append(action)
+            
+        return actions
+    
+    def evaluate_weights(self, weights):
+        """Evaluate current weights by computing ECE and NLL"""
+        weights = weights / weights.sum()  # Ensure normalization
+        ensemble_preds = torch.zeros_like(self.mc_preds_list[0].mean(dim=-1))
+        
+        for i in range(self.n_models):
+            ensemble_preds += weights[i] * self.mc_preds_list[i].mean(dim=-1)
+        
+        # Convert to numpy for metric computation
+        ensemble_preds_np = ensemble_preds.cpu().numpy()
+        targets_np = self.test_targets.cpu().numpy()
+        
+        ece = compute_ece(ensemble_preds_np, targets_np)
+        nll = compute_nll(ensemble_preds_np, targets_np)
+        
+        return ece, nll
+    
+    def generate_trajectory(self, max_steps=10):
+        """Generate a trajectory of weight adjustments"""
+        weights = torch.ones(self.n_models, device=self.device) / self.n_models
+        trajectory = []
+        
+        for _ in range(max_steps):
+            # Sample action from policy
+            action_idx = torch.multinomial(self.policy, 1).item()
+            adjustment = self.action_space[action_idx]
+            
+            # Apply action
+            new_weights = weights + adjustment
+            new_weights = torch.clamp(new_weights, min=0.01)  # Prevent zero weights
+            new_weights = new_weights / new_weights.sum()
+            
+            trajectory.append((weights.clone(), action_idx, new_weights.clone()))
+            weights = new_weights.clone()
+        
+        return trajectory
+    
+    def update_policy(self, trajectories, preferences, alpha=0.1):
+        """Update policy based on trajectory preferences"""
+        for (w1, a1, _), (w2, a2, _) in preferences:
+            # Estimate Pr(a1 > a2 | w1 ≈ w2)
+            # Here we simplify by assuming decisive actions are those that lead to better metrics
+            # In practice, you'd compare the full trajectories' metrics
+            ece1, nll1 = self.evaluate_weights(w1)
+            ece2, nll2 = self.evaluate_weights(w2)
+            
+            if ece1 < ece2 and nll1 < nll2:
+                self.action_preferences[a1, a2] = (1 - alpha) * self.action_preferences[a1, a2] + alpha * 1.0
+                self.action_preferences[a2, a1] = 1.0 - self.action_preferences[a1, a2]
+        
+        # Update policy using pairwise coupling (simplified)
+        for a in range(self.n_actions):
+            self.policy[a] = (1 / (self.n_actions - 1)) * torch.sum(
+                1 / (self.action_preferences[a, :] + 1e-8)) - (self.n_actions - 2)
+        
+        # Normalize policy
+        self.policy = torch.clamp(self.policy, min=0.01)
+        self.policy = self.policy / self.policy.sum()
+    
+    def optimize(self, n_iterations=20, n_trajectories=5, max_steps=5):
+        """Run the optimization process"""
+        for _ in tqdm(range(n_iterations), desc="Optimizing ensemble weights"):
+            # Generate trajectories
+            trajectories = [self.generate_trajectory(max_steps) for _ in range(n_trajectories)]
+            
+            # Evaluate trajectories and create preferences
+            preferences = []
+            traj_metrics = []
+            
+            for traj in trajectories:
+                final_weights = traj[-1][2]  # Get final weights
+                ece, nll = self.evaluate_weights(final_weights)
+                traj_metrics.append((ece, nll))
+                
+                # Update best weights if improved
+                if ece < self.best_ece and nll < self.best_nll:
+                    self.best_ece = ece
+                    self.best_nll = nll
+                    self.best_weights = final_weights.clone()
+            
+            # Create pairwise preferences based on metrics
+            for i in range(len(trajectories)):
+                for j in range(i+1, len(trajectories)):
+                    ece_i, nll_i = traj_metrics[i]
+                    ece_j, nll_j = traj_metrics[j]
+                    
+                    if ece_i < ece_j and nll_i < nll_j:
+                        preferences.append((trajectories[i][-1], trajectories[j][-1]))
+                    elif ece_j < ece_i and nll_j < nll_i:
+                        preferences.append((trajectories[j][-1], trajectories[i][-1]))
+            
+            # Update policy if we have preferences
+            if preferences:
+                self.update_policy(trajectories, preferences)
+        
+        return self.best_weights.cpu().numpy()
+
+# panns_cnn6
+# panns_mobilenetv2
+# ast
+
+if __name__ == "__main__":
+    # User-defined folder path
+    folder_path = "/users/doloriel/work/Repo/UQFishAugment/probs/affia3k/panns_mobilenetv2"
+
+    # Load data
+    test_targets_list, mc_preds_list, file_names = load_npz_files_for_ensembling(folder_path)
+
+    # Check test target consistency
+    check_test_target_consistency(test_targets_list, file_names)
+
+    # Since they are consistent, just take the first one as the true labels
+    all_test_targets = test_targets_list[0]
+
+    # Initialize optimizer
+    optimizer = PreferenceBasedEnsembleOptimizer(mc_preds_list, all_test_targets, len(file_names), device=device)
+
+    # Run optimization
+    best_weights = optimizer.optimize(n_iterations=1000, n_trajectories=5, max_steps=5)
+
+    # Evaluate best weights
+    ensemble_preds = np.zeros_like(mc_preds_list[0].mean(axis=-1))
+    for i in range(len(file_names)):
+        ensemble_preds += best_weights[i] * mc_preds_list[i].mean(axis=-1)
+
+    # Compute metrics
+    ece = compute_ece(ensemble_preds, all_test_targets)
+    nll = compute_nll(ensemble_preds, all_test_targets)
+
+    print("\nOptimization Results:")
+    print("Best Weights:")
+    for name, weight in zip(file_names, best_weights):
+        # Extract augmentation type from filename
+        aug_type = "unknown"
+        for aug in ["time_mask", "band_stop_filter", "gaussian_noise", "time_stretch", "pitch_shift"]:
+            if aug in name:
+                aug_type = aug
+                break
+        print(f"- {aug_type}: {weight:.4f}")
+    
+    print(f"\nMetrics with optimized weights:")
+    print(f"ECE: {ece:.4f}")
+    print(f"NLL: {nll:.4f}")
+    print("-" * 50)
+
+    # Compare with uniform weights
+    uniform_weights = np.ones(len(file_names)) / len(file_names)
+    uniform_preds = np.zeros_like(mc_preds_list[0].mean(axis=-1))
+    for i in range(len(file_names)):
+        uniform_preds += uniform_weights[i] * mc_preds_list[i].mean(axis=-1)
+
+    uniform_ece = compute_ece(uniform_preds, all_test_targets)
+    uniform_nll = compute_nll(uniform_preds, all_test_targets)
+
+    print("\nUniform Weights Comparison:")
+    print("Uniform Weights:")
+    for name, weight in zip(file_names, uniform_weights):
+        # Extract augmentation type from filename
+        aug_type = "unknown"
+        for aug in ["time_mask", "band_stop_filter", "gaussian_noise", "time_stretch", "pitch_shift"]:
+            if aug in name:
+                aug_type = aug
+                break
+        print(f"- {aug_type}: {weight:.4f}")
+    
+    print(f"\nMetrics with uniform weights:")
+    print(f"ECE: {uniform_ece:.4f}")
+    print(f"NLL: {uniform_nll:.4f}")
+    print("-" * 50)

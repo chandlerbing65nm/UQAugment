@@ -20,6 +20,12 @@ from datasets.noise import get_dataloader as noise_loader
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
+torch.manual_seed(42)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(42)
+np.random.seed(42)
+random.seed(42)
+
 def load_checkpoint(model, checkpoint_path):
     """Load model weights from the checkpoint."""
     if os.path.isfile(checkpoint_path):
@@ -45,12 +51,12 @@ def save_probabilities(args, all_test_targets, all_mc_preds):
     if args.ablation:
         if args.spec_aug == 'specaugment':
             ablation_params = args.specaugment_params
-        elif args.spec_aug == 'diffres':
-            ablation_params = args.diffres_params
         elif args.spec_aug == 'specmix':
             ablation_params = args.specmix_params
         else:
+            # if using fma or none - not yet implemented
             ablation_params = "unknown"
+
         params_str += f"_abl-{args.spec_aug}_{ablation_params}"
 
     # Add audiomentations parameters if applicable
@@ -60,6 +66,10 @@ def save_probabilities(args, all_test_targets, all_mc_preds):
         
         if args.ablation:
             # Append additional parameters if specific augmentations are chosen
+            if 'time_mask' in args.audiomentations:
+                params_str += f"_time_mask_params-{args.time_mask_params}"
+            if 'band_stop_filter' in args.audiomentations:
+                params_str += f"_band_stop_filter_params-{args.band_stop_filter_params}"
             if 'gaussian_noise' in args.audiomentations:
                 params_str += f"_gaussian_noise_params-{args.gaussian_noise_params}"
             if 'pitch_shift' in args.audiomentations:
@@ -106,6 +116,9 @@ def main():
 
     # Get transforms
     transform = get_transforms(args)
+
+    # Initialize test data loader
+    _, _, test_dataset, test_loader = get_dataloaders(args, transform)
 
     # We'll store predictions across the entire test set
     all_test_targets = []

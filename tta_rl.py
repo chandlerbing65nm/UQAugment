@@ -84,11 +84,13 @@ def check_test_target_consistency(test_targets_list, file_names):
     print("✅ All 'all_test_targets' arrays are identical across all augmentations.")
 
 class PreferenceBasedEnsembleOptimizer:
-    def __init__(self, mc_preds_list, test_targets, n_models, device='cuda'):
+    def __init__(self, mc_preds_list, test_targets, n_models, dataset_name, model_name, device='cuda'):
         self.mc_preds_list = [torch.tensor(p, device=device) for p in mc_preds_list]
         self.test_targets = torch.tensor(test_targets, device=device)
         self.n_models = n_models
         self.device = device
+        self.dataset_name = dataset_name
+        self.model_name = model_name
         
         # Initialize action space (small weight adjustments)
         self.action_space = self._create_action_space()
@@ -117,7 +119,23 @@ class PreferenceBasedEnsembleOptimizer:
         self.initial_exploration = 0.5
         self.final_exploration = 0.01
         self.exploration_decay = 0.99
-        
+
+        # Initialize history tracking
+        self.history = {
+            'weights': [],
+            'ece': [],
+            'brier': [],
+            'exploration_rate': [],
+            'augmentation_names': [self._extract_aug_name(f) for f in file_names]  # Add this line
+        }
+
+    def _extract_aug_name(self, filename):
+        """Extract augmentation name from filename"""
+        for aug in ["time_mask", "band_stop_filter", "gaussian_noise", "time_stretch", "pitch_shift"]:
+            if aug in filename:
+                return aug
+        return "base"
+
     def _create_action_space(self):
         """Create action space as small weight adjustments"""
         actions = []
@@ -221,8 +239,31 @@ class PreferenceBasedEnsembleOptimizer:
         
         # Direct softmax normalization (replaces pairwise coupling)
         self.policy = torch.softmax(self.action_preferences.mean(dim=1), dim=0)
-    
+
+    def _save_history(self):
+        """Save history to a numpy file"""
+        os.makedirs('history', exist_ok=True)
+        filename = f"history/{self.dataset_name}_{self.model_name}_history.npz"
+        np.savez(
+            filename,
+            weights=np.array(self.history['weights']),
+            ece=np.array(self.history['ece']),
+            brier=np.array(self.history['brier']),
+            exploration_rate=np.array(self.history['exploration_rate']),
+            augmentation_names=np.array(self.history['augmentation_names'])
+        )
+        print(f"Saved optimization history to {filename}")
+
     def optimize(self, n_iterations=20, n_trajectories=5, max_steps=5):
+        # Store initial uniform weights first
+        initial_weights = torch.ones(self.n_models, device=self.device) / self.n_models
+        initial_ece, initial_brier = self.evaluate_weights(initial_weights)
+        
+        self.history['weights'].append(initial_weights.cpu().numpy())
+        self.history['ece'].append(initial_ece)
+        self.history['brier'].append(initial_brier)
+        self.history['exploration_rate'].append(self.initial_exploration)
+
         """Run the optimization process"""
         for iteration in tqdm(range(n_iterations), desc="Optimizing ensemble weights"):
             # Generate trajectories
@@ -256,7 +297,17 @@ class PreferenceBasedEnsembleOptimizer:
             # Update policy if we have preferences
             if preferences:
                 self.update_policy(trajectories, preferences)
-        
+
+            # Store history at each iteration
+            self.history['weights'].append(self.best_weights.cpu().numpy().copy())
+            self.history['ece'].append(self.best_ece)
+            self.history['brier'].append(self.best_nll)  # Note: your code uses nll as brier
+            self.history['exploration_rate'].append(
+                max(self.final_exploration,
+                    self.initial_exploration * (self.exploration_decay ** iteration)))
+
+        # Save history to file
+        self._save_history()     
         return self.best_weights.cpu().numpy()
 
 
@@ -264,7 +315,9 @@ class PreferenceBasedEnsembleOptimizer:
 # datasets: affia3k, mrsffia
 
 if __name__ == "__main__":
-    folder_path = "/users/doloriel/work/Repo/UQFishAugment/probs_epistemic/mrsffia/ast"
+    dataset = 'affia3k'
+    model = 'ast'
+    folder_path = f"/users/doloriel/work/Repo/UQFishAugment/probs_epistemic/{dataset}/{model}"
 
     # Load data
     test_targets_list, mc_preds_list, file_names = load_npz_files_for_ensembling(folder_path)
@@ -279,8 +332,12 @@ if __name__ == "__main__":
     mc_preds_list, all_test_targets = subsample_first_50_per_class(mc_preds_list, all_test_targets)
 
     # Initialize optimizer
-    optimizer = PreferenceBasedEnsembleOptimizer(mc_preds_list, all_test_targets, len(file_names), device=device)
-
+    optimizer = PreferenceBasedEnsembleOptimizer(
+        mc_preds_list, all_test_targets, len(file_names), 
+        dataset_name=f"{dataset}",
+        model_name=f"{model}",
+        device=device
+    )
     # Run optimization
     best_weights = optimizer.optimize(n_iterations=300, n_trajectories=10, max_steps=10)
 

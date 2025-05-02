@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from pprint import pprint
 import ipdb
+import random
 
 from config.config import parse_args
 from methods.model_selection import get_model
@@ -37,7 +38,7 @@ def load_checkpoint(model, checkpoint_path):
         raise FileNotFoundError(f"Checkpoint not found at {checkpoint_path}")
 
 def save_probabilities(args, all_test_targets, all_mc_preds):
-    """Save all_test_targets and all_mc_preds to a file in the 'probs/' folder."""
+    """Save all_test_targets and all_mc_preds to a file in the 'probs_aleatoric/' folder."""
 
     # Construct a formatted string for additional arguments to include in the filename
     params_str = (
@@ -82,10 +83,10 @@ def save_probabilities(args, all_test_targets, all_mc_preds):
         params_str += f"_withnoise_seg-{args.noise_segment_ratio}"
 
     # File path for saving probabilities
-    probs_path = f"probs/{args.dataset}/{args.model_name}/{args.frontend}_{args.spec_aug}_probs_{params_str}.npz"
-
+    probs_path = f"probs_aleatoric/{args.dataset}/{args.model_name}/{args.frontend}_{args.spec_aug}_probs_{params_str}.npz"
+    
     # Ensure the folder exists
-    os.makedirs(f"probs/{args.dataset}/{args.model_name}", exist_ok=True)
+    os.makedirs(f"probs_aleatoric/{args.dataset}/{args.model_name}", exist_ok=True)
 
     # Save probabilities
     np.savez(probs_path, all_test_targets=all_test_targets, all_mc_preds=all_mc_preds)
@@ -94,8 +95,16 @@ def save_probabilities(args, all_test_targets, all_mc_preds):
 def main():
     args = parse_args()
 
-    # You can customize this to an argument if you'd like
-    # how many MC Dropout runs for UQ. Let's pick 20 by default.
+    # Check that both model_name and audiomentations appear in the checkpoint path
+    model_str = str(args.model_name)
+    audioment_str = "-".join(args.audiomentations) if args.audiomentations else ""
+
+    if model_str not in args.checkpoint or (audioment_str and audioment_str not in args.checkpoint):
+        raise ValueError(
+            f"Checkpoint path '{args.checkpoint}' must contain both the model name '{model_str}' "
+            f"and the audiomentations string '{audioment_str}'."
+        )
+
     # If num_mc_runs = 1, it means TTA is used not MCDropout
     num_mc_runs = 1
 

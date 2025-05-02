@@ -58,19 +58,31 @@ def save_results(args, test_acc, test_map, test_f1):
     if args.ablation:
         if args.spec_aug == 'specaugment':
             ablation_params = args.specaugment_params
-        elif args.spec_aug == 'diffres':
-            ablation_params = args.diffres_params
         elif args.spec_aug == 'specmix':
             ablation_params = args.specmix_params
         else:
+            # if using fma or none - not yet implemented
             ablation_params = "unknown"
 
         params_str += f"_abl-{args.spec_aug}_{ablation_params}"
 
     # Add audiomentations parameters if applicable
-    if hasattr(args, 'audiomentations') and args.audiomentations:
+    if args.audiomentations:
         audiomentations_str = "-".join(args.audiomentations)
         params_str += f"_audioment-{audiomentations_str}"
+        
+        if args.ablation:
+            # Append additional parameters if specific augmentations are chosen
+            if 'time_mask' in args.audiomentations:
+                params_str += f"_time_mask_params-{args.time_mask_params}"
+            if 'band_stop_filter' in args.audiomentations:
+                params_str += f"_band_stop_filter_params-{args.band_stop_filter_params}"
+            if 'gaussian_noise' in args.audiomentations:
+                params_str += f"_gaussian_noise_params-{args.gaussian_noise_params}"
+            if 'pitch_shift' in args.audiomentations:
+                params_str += f"_pitch_shift_params-{args.pitch_shift_params}"
+            if 'time_stretch' in args.audiomentations:
+                params_str += f"_time_stretch_params-{args.time_stretch_params}"
 
     # Add noise toggle note if both ablation and noise are True
     if args.ablation and args.noise:
@@ -86,42 +98,6 @@ def save_results(args, test_acc, test_map, test_f1):
         f.write(f"Test F1 Score: {test_f1:.4f}\n")
 
     print(f"Results saved to {results_path}")
-
-def add_poisson_noise_in_segment(inputs, noise_batch, alpha=0.1, lam=100, segment_ratio=0.1):
-    """
-    Adds noise to `inputs` in a localized segment for each sample in the batch.
-
-    Args:
-        inputs (torch.Tensor): Shape [B, L], your clean audio batch.
-        noise_batch (torch.Tensor): Shape [B, L], the noise batch (already repeated to match B).
-        alpha (float): Scaling factor for how loud the noise is.
-        lam (float): Lambda for the Poisson distribution controlling start offsets.
-        segment_ratio (float): Fraction of total length for the noise segment size.
-    Returns:
-        torch.Tensor: The inputs with localized noise added.
-    """
-    B, L = inputs.shape
-
-    # Sample B offsets from a Poisson distribution, each offset indicating where noise starts.
-    # (Shape = [B], each entry is a random int >= 0)
-    poisson_offsets = torch.poisson(torch.full((B,), lam, dtype=torch.float, device=inputs.device))
-
-    # Make sure offsets don't exceed the audio length.
-    # You might experiment with a smaller or bigger clamp depending on lam, etc.
-    poisson_offsets = torch.clamp(poisson_offsets, max=L-1)
-
-    # Decide how large the noise window is. E.g., 10% of total length
-    seg_length = int(segment_ratio * L)
-    if seg_length < 1:
-        seg_length = 1  # at least 1 sample
-
-    for i in range(B):
-        start = int(poisson_offsets[i].item())  # Cast to int
-        end = int(min(start + seg_length, L))  # Cast to int
-        # Mix noise into inputs only in [start : end]
-        inputs[i, start:end] += alpha * noise_batch[i, start:end]
-
-    return inputs
 
 def main():
     args = parse_args()
@@ -145,36 +121,15 @@ def main():
     # Initialize test data loader
     _, _, test_dataset, test_loader = get_dataloaders(args, transform)
 
-    # Noise data loaders
-    _, noisetest_loader = noise_loader(split='val', batch_size=args.batch_size//10, sample_rate=args.sample_rate, shuffle=False, seed=args.seed, drop_last=True, transform=None, args=args)
-
     # Model evaluation
     model.eval()
     all_test_targets = []
     all_test_outputs = []
 
-    noise_iter = iter(noisetest_loader)
-
     with torch.no_grad():
         for batch in tqdm(test_loader, desc="Testing"):
             inputs = batch['waveform'].to(device)
             targets = batch['target'].to(device)
-
-            # Add noise if args.ablation and args.noise are True
-            if args.ablation and args.noise:
-                try:
-                    noise_batch = next(noise_iter)['waveform'].to(device)
-                except StopIteration:
-                    # Restart noise loader iterator when exhausted
-                    noise_iter = iter(noisetest_loader)
-                    noise_batch = next(noise_iter)['waveform'].to(device)
-
-                repeat_factor = (inputs.size(0) + noise_batch.size(0) - 1) // noise_batch.size(0)
-                noise_batch = noise_batch.repeat(repeat_factor, 1)[:inputs.size(0)]
-                
-                lam = int(args.target_duration * args.sample_rate) // 2
-                segment_ratio = args.noise_segment_ratio
-                inputs = add_poisson_noise_in_segment(inputs, noise_batch, lam=lam, segment_ratio=segment_ratio)
 
             # Forward pass
             if any(keyword in args.model_name for keyword in ('panns', 'ast')):

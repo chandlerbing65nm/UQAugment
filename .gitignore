@@ -8,7 +8,8 @@ misc/
 plots/
 wandb/
 weights/
-probs/
+probs_epistemic/
+probs_aleatoric/
 probs_noise_0.1/
 logs/
 __pycache__/

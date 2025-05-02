@@ -14,8 +14,7 @@ if torch.cuda.is_available():
 np.random.seed(42)
 random.seed(42)
 
-def compute_ece(probs, labels, n_bins=10):
-    """Compute Expected Calibration Error (ECE)"""
+def compute_ece(probs, labels, n_bins=20):  # changed from 10 to 20
     confidences = probs.max(axis=1)
     predictions = probs.argmax(axis=1)
     accuracies = (predictions == labels)
@@ -34,12 +33,33 @@ def compute_ece(probs, labels, n_bins=10):
 
     return ece
 
-def compute_nll(probs, labels):
-    """Compute Negative Log-Likelihood (NLL)"""
-    eps = 1e-12
-    true_class_probs = probs[np.arange(len(labels)), labels]
-    nll = -np.mean(np.log(true_class_probs + eps))
-    return nll
+def compute_brier(probs, labels, num_classes=None):
+    """Compute Brier Score"""
+    if num_classes is None:
+        num_classes = probs.shape[1]
+    one_hot = np.eye(num_classes)[labels]
+    brier = np.mean(np.sum((probs - one_hot) ** 2, axis=1))
+    return brier
+
+def subsample_first_50_per_class(probs_list, targets):
+    """Return subsampled probs and targets where only first 50 samples per class are kept"""
+    num_classes = np.max(targets) + 1
+    class_counts = {i: 0 for i in range(num_classes)}
+    indices = []
+
+    for idx, label in enumerate(targets):
+        if class_counts[label] < 50:
+            indices.append(idx)
+            class_counts[label] += 1
+        if all(v >= 50 for v in class_counts.values()):
+            break
+
+    # Apply to all model probs
+    subsampled_probs_list = [p[indices] for p in probs_list]
+    subsampled_targets = targets[indices]
+
+    return subsampled_probs_list, subsampled_targets
+
 
 def load_npz_files_for_ensembling(folder_path):
     """Load predictions and targets from .npz files"""
@@ -90,8 +110,8 @@ class PreferenceBasedEnsembleOptimizer:
         self.bin_size = 0.05  # Round weights to 2 decimal places
         
         # For scalarization
-        self.ece_weight = 0.7  # Weight for ECE in scalarized objective
-        self.nll_weight = 0.3  # Weight for NLL in scalarized objective
+        self.ece_weight = 0.5  # Weight for ECE in scalarized objective
+        self.brier_weight = 0.5  # Weight for NLL in scalarized objective
         
         # For decaying exploration
         self.initial_exploration = 0.5
@@ -125,28 +145,26 @@ class PreferenceBasedEnsembleOptimizer:
         return tuple(binned.cpu().numpy().round(2))
     
     def evaluate_weights(self, weights):
-        """Evaluate current weights by computing ECE and NLL"""
-        weights = weights / weights.sum()  # Ensure normalization
+        """Evaluate current weights by computing ECE and Brier Score"""
+        weights = weights / weights.sum()
         ensemble_preds = torch.zeros_like(self.mc_preds_list[0].mean(dim=-1))
-        
+
         for i in range(self.n_models):
             ensemble_preds += weights[i] * self.mc_preds_list[i].mean(dim=-1)
-        
-        # Convert to numpy for metric computation
+
         ensemble_preds_np = ensemble_preds.cpu().numpy()
         targets_np = self.test_targets.cpu().numpy()
-        
+
         ece = compute_ece(ensemble_preds_np, targets_np)
-        nll = compute_nll(ensemble_preds_np, targets_np)
-        
-        return ece, nll
-    
-    def scalarized_objective(self, ece, nll):
-        """Combine ECE and NLL into a single scalar objective"""
-        # Normalize metrics (assuming typical ranges)
-        norm_ece = ece/0.2  # Assuming ECE typically < 0.2
-        norm_nll = nll/2.0  # Assuming NLL typically < 2.0
-        return self.ece_weight * norm_ece + self.nll_weight * norm_nll
+        brier = compute_brier(ensemble_preds_np, targets_np)
+
+        return ece, brier
+
+    def scalarized_objective(self, ece, brier):
+        norm_ece = ece / 0.2
+        norm_brier = brier / 1.0  # Assuming Brier usually < 0.5 for good models
+        return self.ece_weight * norm_ece + self.brier_weight * norm_brier
+
     
     def generate_trajectory(self, max_steps=10, iteration=0):
         """Generate trajectory with decaying exploration"""
@@ -241,13 +259,12 @@ class PreferenceBasedEnsembleOptimizer:
         
         return self.best_weights.cpu().numpy()
 
-# panns_cnn6
-# panns_mobilenetv2
-# ast
+
+# models:   panns_cnn6, panns_mobilenetv2, ast
+# datasets: affia3k, mrsffia
 
 if __name__ == "__main__":
-    # User-defined folder path
-    folder_path = "/users/doloriel/work/Repo/UQFishAugment/probs/affia3k/panns_cnn6"
+    folder_path = "/users/doloriel/work/Repo/UQFishAugment/probs_epistemic/mrsffia/ast"
 
     # Load data
     test_targets_list, mc_preds_list, file_names = load_npz_files_for_ensembling(folder_path)
@@ -255,8 +272,11 @@ if __name__ == "__main__":
     # Check test target consistency
     check_test_target_consistency(test_targets_list, file_names)
 
-    # Since they are consistent, just take the first one as the true labels
+    # Define targets
     all_test_targets = test_targets_list[0]
+
+    # 🔁 Subsample after test_targets are assigned
+    mc_preds_list, all_test_targets = subsample_first_50_per_class(mc_preds_list, all_test_targets)
 
     # Initialize optimizer
     optimizer = PreferenceBasedEnsembleOptimizer(mc_preds_list, all_test_targets, len(file_names), device=device)
@@ -271,7 +291,7 @@ if __name__ == "__main__":
 
     # Compute metrics
     ece = compute_ece(ensemble_preds, all_test_targets)
-    nll = compute_nll(ensemble_preds, all_test_targets)
+    brier = compute_brier(ensemble_preds, all_test_targets)
 
     print("\nOptimization Results:")
     print("Best Weights:")
@@ -286,7 +306,7 @@ if __name__ == "__main__":
     
     print(f"\nMetrics with optimized weights:")
     print(f"ECE: {ece:.4f}")
-    print(f"NLL: {nll:.4f}")
+    print(f"Brier Score: {brier:.4f}")
     print("-" * 50)
 
     # Compare with uniform weights
@@ -296,7 +316,7 @@ if __name__ == "__main__":
         uniform_preds += uniform_weights[i] * mc_preds_list[i].mean(axis=-1)
 
     uniform_ece = compute_ece(uniform_preds, all_test_targets)
-    uniform_nll = compute_nll(uniform_preds, all_test_targets)
+    uniform_brier = compute_brier(uniform_preds, all_test_targets)
 
     print("\nUniform Weights Comparison:")
     print("Uniform Weights:")
@@ -311,5 +331,5 @@ if __name__ == "__main__":
     
     print(f"\nMetrics with uniform weights:")
     print(f"ECE: {uniform_ece:.4f}")
-    print(f"NLL: {uniform_nll:.4f}")
+    print(f"Brier Score: {uniform_brier:.4f}")
     print("-" * 50)

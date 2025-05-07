@@ -5,14 +5,19 @@ def save_checkpoint(model, args, best_val_map, best_val_acc, current_val_map, cu
     # Base checkpoint directory
     ckpt_dir = f'/scratch/project_465001389/chandler_scratch/Projects/FrameMixer/checkpoints_uq'
     
-    # If ablation is enabled, create a subdirectory for ablations
+    # Construct the base save directory based on dataset and model
     if args.ablation:
-        save_dir = os.path.join(ckpt_dir, f'ablation/{args.spec_aug}')
-        os.makedirs(save_dir, exist_ok=True)
+        # For ablation studies, use the structure: ablation/none/[dataset]/[augmentation_type]
+        save_dir = os.path.join(ckpt_dir, 'ablation', 'none', args.dataset)
+        if args.audiomentations:
+            # Use the first augmentation type as the directory name
+            aug_type = args.audiomentations[0]
+            save_dir = os.path.join(save_dir, aug_type)
     else:
-        save_dir = ckpt_dir
+        # For regular training: [dataset]/[model_name]
+        save_dir = os.path.join(ckpt_dir, args.dataset, args.model_name)
 
-    os.makedirs(ckpt_dir, exist_ok=True)
+    os.makedirs(save_dir, exist_ok=True)
 
     # Construct a formatted string for additional arguments to include in the filename
     params_str = (

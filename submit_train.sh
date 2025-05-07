@@ -11,7 +11,7 @@
 #SBATCH --partition=small-g            
 #SBATCH --time=24:00:00           
 #SBATCH --account=project_465001897
-#SBATCH --output=/users/doloriel/work/Repo/UQFishAugment/logs/ablation/mrsffia/panns_cnn6/time_stretch-3.out
+#SBATCH --output=/users/doloriel/work/Repo/UQFishAugment/logs/uffia/ast/time_stretch.out
 
 # ===================== Environment Setup =====================
 conda init
@@ -30,8 +30,8 @@ cd /users/doloriel/work/Repo/UQFishAugment
 #   3. 1000,6000,0.8 (default)
 #
 # Gaussian Noise Parameters:
-#   1. 0.005,0.02,0.3
-#   2. 0.01,0.05,0.5 (default)
+#   1. 0.005,0.02,0.3 (default)
+#   2. 0.01,0.05,0.5 (default#2)
 #   3. 0.02,0.1,0.8
 #
 # Pitch Shift Parameters:
@@ -48,43 +48,41 @@ cd /users/doloriel/work/Repo/UQFishAugment
 # Available Models: panns_cnn6, panns_mobilenetv2, ast
 # Available Augmentations: time_mask, band_stop_filter, gaussian_noise, pitch_shift, time_stretch
 
-# ===================== MRS-FFIA =====================
+#===================== AVFFIA Training =====================
 python train.py \
     --batch_size 200 \
     --max_epoch 500 \
     --wandb_mode "offline" \
-    --dataset mrsffia \
-    --data_path /scratch/project_465001389/chandler_scratch/Datasets/mrsffia \
-    --model_name "panns_cnn6" \
+    --dataset uffia \
+    --data_path /scratch/project_465001389/chandler_scratch/Datasets/uffia \
+    --model_name "ast" \
     --num_classes 4 \
-    --sample_rate 22050 \
-    --window_size 1024 \
-    --hop_size 512 \
+    --sample_rate 64000 \
+    --window_size 2048 \
+    --hop_size 1024 \
     --mel_bins 64 \
     --fmin 1 \
-    --fmax 14000 \
-    --target_duration 3 \
-    --audiomentations time_stretch \
-    --ablation \
-    --time_stretch_params=0.7,1.5,0.8
+    --fmax 128000 \
+    --target_duration 2 \
+    --audiomentations time_stretch
 
-# ===================== AVFFIA Training =====================
+# # ===================== MRS-FFIA =====================
 # python train.py \
 #     --batch_size 200 \
 #     --max_epoch 500 \
 #     --wandb_mode "offline" \
-#     --dataset uffia \
-#     --data_path /scratch/project_465001389/chandler_scratch/Datasets/uffia \
-#     --model_name "panns_mobilenetv1" \
+#     --dataset mrsffia \
+#     --data_path /scratch/project_465001389/chandler_scratch/Datasets/mrsffia \
+#     --model_name "ast" \
 #     --num_classes 4 \
-#     --sample_rate 64000 \
-#     --window_size 2048 \
-#     --hop_size 1024 \
+#     --sample_rate 22050 \
+#     --window_size 1024 \
+#     --hop_size 512 \
 #     --mel_bins 64 \
 #     --fmin 1 \
-#     --fmax 128000 \
-#     --target_duration 2 \
-#     --audiomentations band_stop_filter
+#     --fmax 14000 \
+#     --target_duration 3 \
+#     --audiomentations gaussian_noise \
 
 # ===================== AFFIA3K Training =====================
 # python train.py \

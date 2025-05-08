@@ -91,15 +91,15 @@ def load_npz_files_for_ensembling(folder_path):
     """Load predictions and targets from .npz files"""
     file_names = [f for f in os.listdir(folder_path) if f.endswith(".npz")]
     test_targets_list = []
-    mc_preds_list = []
+    aug_preds_list = []
 
     for file_name in file_names:
         file_path = os.path.join(folder_path, file_name)
         data = np.load(file_path)
         test_targets_list.append(data["all_test_targets"])
-        mc_preds_list.append(data["all_mc_preds"])
+        aug_preds_list.append(data["all_mc_preds"])
 
-    return test_targets_list, mc_preds_list, file_names
+    return test_targets_list, aug_preds_list, file_names
 
 def check_test_target_consistency(test_targets_list, file_names):
     """Verify all test targets are identical"""
@@ -110,8 +110,8 @@ def check_test_target_consistency(test_targets_list, file_names):
     print("✅ All 'all_test_targets' arrays are identical across all augmentations.")
 
 class PreferenceBasedEnsembleOptimizer:
-    def __init__(self, mc_preds_list, test_targets, n_models, dataset_name, model_name, device='cuda'):
-        self.mc_preds_list = [torch.tensor(p, device=device) for p in mc_preds_list]
+    def __init__(self, aug_preds_list, test_targets, n_models, dataset_name, model_name, device='cuda'):
+        self.aug_preds_list = [torch.tensor(p, device=device) for p in aug_preds_list]
         self.test_targets = torch.tensor(test_targets, device=device)
         self.n_models = n_models
         self.device = device
@@ -188,10 +188,10 @@ class PreferenceBasedEnsembleOptimizer:
     def evaluate_weights(self, weights):
         """Evaluate current weights by computing all metrics"""
         weights = weights / weights.sum()
-        ensemble_preds = torch.zeros_like(self.mc_preds_list[0].mean(dim=-1))
+        ensemble_preds = torch.zeros_like(self.aug_preds_list[0].mean(dim=-1))
 
         for i in range(self.n_models):
-            ensemble_preds += weights[i] * self.mc_preds_list[i].mean(dim=-1)
+            ensemble_preds += weights[i] * self.aug_preds_list[i].mean(dim=-1)
 
         ensemble_preds_np = ensemble_preds.cpu().numpy()
         targets_np = self.test_targets.cpu().numpy()
@@ -345,12 +345,12 @@ class PreferenceBasedEnsembleOptimizer:
 # datasets: affia3k, mrsffia, uffia
 
 if __name__ == "__main__":
-    dataset = 'uffia'
+    dataset = 'mrsffia'
     model = 'ast'
     folder_path = f"/users/doloriel/work/Repo/UQFishAugment/probs_epistemic/{dataset}/{model}"
 
     # Load data
-    test_targets_list, mc_preds_list, file_names = load_npz_files_for_ensembling(folder_path)
+    test_targets_list, aug_preds_list, file_names = load_npz_files_for_ensembling(folder_path)
 
     # Check test target consistency
     check_test_target_consistency(test_targets_list, file_names)
@@ -359,11 +359,11 @@ if __name__ == "__main__":
     all_test_targets = test_targets_list[0]
 
     # 🔁 Subsample after test_targets are assigned
-    mc_preds_list, all_test_targets = subsample_first_50_per_class(mc_preds_list, all_test_targets)
+    aug_preds_list, all_test_targets = subsample_first_50_per_class(aug_preds_list, all_test_targets)
 
     # Initialize optimizer
     optimizer = PreferenceBasedEnsembleOptimizer(
-        mc_preds_list, all_test_targets, len(file_names), 
+        aug_preds_list, all_test_targets, len(file_names), 
         dataset_name=f"{dataset}",
         model_name=f"{model}",
         device=device
@@ -372,9 +372,9 @@ if __name__ == "__main__":
     best_weights = optimizer.optimize(n_iterations=300, n_trajectories=10, max_steps=10)
 
     # Evaluate best weights
-    ensemble_preds = np.zeros_like(mc_preds_list[0].mean(axis=-1))
+    ensemble_preds = np.zeros_like(aug_preds_list[0].mean(axis=-1))
     for i in range(len(file_names)):
-        ensemble_preds += best_weights[i] * mc_preds_list[i].mean(axis=-1)
+        ensemble_preds += best_weights[i] * aug_preds_list[i].mean(axis=-1)
 
     # Compute metrics
     accuracy = compute_accuracy(ensemble_preds, all_test_targets)
@@ -402,9 +402,9 @@ if __name__ == "__main__":
 
     # Compare with uniform weights
     uniform_weights = np.ones(len(file_names)) / len(file_names)
-    uniform_preds = np.zeros_like(mc_preds_list[0].mean(axis=-1))
+    uniform_preds = np.zeros_like(aug_preds_list[0].mean(axis=-1))
     for i in range(len(file_names)):
-        uniform_preds += uniform_weights[i] * mc_preds_list[i].mean(axis=-1)
+        uniform_preds += uniform_weights[i] * aug_preds_list[i].mean(axis=-1)
 
     uniform_accuracy = compute_accuracy(uniform_preds, all_test_targets)
     uniform_nll = compute_nll(uniform_preds, all_test_targets)

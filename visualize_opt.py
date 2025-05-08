@@ -32,15 +32,48 @@ def plot_weight_trajectories(histories, dataset_name, plot_every_n=50):
     """
     plt.figure(figsize=(12, 8))
     
+    # Set font sizes
+    plt.rcParams['axes.labelsize'] = 14
+    plt.rcParams['legend.fontsize'] = 14
+    plt.rcParams['xtick.labelsize'] = 14
+    plt.rcParams['ytick.labelsize'] = 14
+    
     # First collect all unique augmentation types
     all_augs = []
     for history in histories.values():
         all_augs.extend(history['augmentation_names'])
     all_augs = sorted(set(all_augs))  # Get unique sorted augmentations
     
+    # Custom dark color palette with good separation
+    custom_colors = [
+        '#1f77b4',  # dark blue
+        '#d62728',  # dark red
+        '#2ca02c',  # dark green
+        '#9467bd',  # dark purple
+        '#8c564b',  # dark brown
+        '#e377c2',  # dark pink
+        '#7f7f7f',  # dark gray
+        '#bcbd22',  # dark yellow-green
+        '#17becf',  # dark cyan
+        '#ff7f0e',  # dark orange
+    ]
+    
     # Create a color map for augmentations
-    colors = plt.cm.tab10(np.linspace(0, 1, len(all_augs)))
-    aug_colors = {aug: colors[i] for i, aug in enumerate(all_augs)}
+    aug_colors = {aug: custom_colors[i % len(custom_colors)] for i, aug in enumerate(all_augs)}
+    
+    # Create a mapping for legend labels
+    legend_labels = {
+        'gaussian_noise': 'Gaussian Noise',
+        'band_stop_filter': 'Band Stop Filter',
+        'time_stretch': 'Time Stretch',
+        'pitch_shift': 'Pitch Shift',
+        'background_noise': 'Background Noise',
+        'frequency_mask': 'Frequency Mask',
+        'time_mask': 'Time Mask',
+        'spec_augment': 'Spec Augment',
+        'mixup': 'Mixup',
+        'cutmix': 'Cutmix'
+    }
     
     # Prepare storage for averaged weights and std dev
     aug_weights = {aug: [] for aug in all_augs}
@@ -77,6 +110,10 @@ def plot_weight_trajectories(histories, dataset_name, plot_every_n=50):
                 aug_weights[aug].append(np.mean(iter_weights[aug]))
                 aug_stds[aug].append(np.std(iter_weights[aug]))  # New: calculate std
     
+    # Create legend handles and labels
+    legend_handles = []
+    legend_labels_list = []
+    
     # Plot each augmentation's average trajectory with shaded area
     for aug in all_augs:
         if aug_weights[aug]:  # Only plot if we have data
@@ -84,11 +121,10 @@ def plot_weight_trajectories(histories, dataset_name, plot_every_n=50):
             std_array = np.array(aug_stds[aug])
             
             # Plot the mean line
-            plt.plot(iteration_points, weights_array, 
-                    label=aug, 
+            line = plt.plot(iteration_points, weights_array, 
                     color=aug_colors[aug],
                     linewidth=2,
-                    marker='o', markersize=4)
+                    marker='o', markersize=4)[0]
             
             # Add shaded area for standard deviation
             plt.fill_between(iteration_points,
@@ -96,6 +132,11 @@ def plot_weight_trajectories(histories, dataset_name, plot_every_n=50):
                            weights_array + std_array,
                            color=aug_colors[aug],
                            alpha=0.2)
+            
+            # Create a patch for the legend
+            patch = plt.Rectangle((0, 0), 1, 1, fc=aug_colors[aug])
+            legend_handles.append(patch)
+            legend_labels_list.append(legend_labels.get(aug, aug))
     
     # Add horizontal line at initial weight value
     initial_weight = 1.0/len(all_augs)
@@ -105,11 +146,18 @@ def plot_weight_trajectories(histories, dataset_name, plot_every_n=50):
     if plot_every_n > 1:
         plt.xticks(iteration_points)
     
-    # plt.title(f'Average Ensemble Weights with Standard Deviation\n{dataset_name}')
-    plt.xlabel('Iteration')
-    plt.ylabel('Average Weight Value')
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.xlabel('Iterations', fontsize=20)
+    plt.ylabel('Average Weight Value', fontsize=20)
+    
+    # Create legend with patches
+    plt.legend(legend_handles, legend_labels_list,
+              bbox_to_anchor=(0.5, 1.15), loc='upper center', 
+              ncol=3, frameon=False, fontsize=18)
+    
     plt.grid(True, alpha=0.3)
+    
+    # Adjust layout to prevent legend cutoff
+    plt.subplots_adjust(top=0.85)
     
     os.makedirs('figures', exist_ok=True)
     plt.savefig(f'figures/{dataset_name}_avg_weight_trajectories_with_std.png', 
@@ -119,6 +167,12 @@ def plot_weight_trajectories(histories, dataset_name, plot_every_n=50):
 def plot_metric_progress(histories, dataset_name):
     """Plot ECE and Brier score progress for all models"""
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
+    
+    # Set font sizes
+    plt.rcParams['axes.labelsize'] = 14
+    plt.rcParams['legend.fontsize'] = 12
+    plt.rcParams['xtick.labelsize'] = 12
+    plt.rcParams['ytick.labelsize'] = 12
     
     for model_name, history in histories.items():
         iterations = range(len(history['ece']))
@@ -131,13 +185,13 @@ def plot_metric_progress(histories, dataset_name):
         ax2.plot(iterations, history['brier'],
                 label=f"{model_name}", marker='o', markersize=3)
     
-    ax1.set_ylabel('ECE')
-    ax1.set_title(f'Calibration Metric Progress\nDataset: {dataset_name}')
+    ax1.set_ylabel('ECE', fontsize=14)
+    ax1.set_title(f'Calibration Metric Progress\nDataset: {dataset_name}', fontsize=14)
     ax1.grid(True)
-    ax1.legend()
+    ax1.legend(fontsize=12)
     
-    ax2.set_xlabel('Iteration')
-    ax2.set_ylabel('Brier Score')
+    ax2.set_xlabel('Iterations', fontsize=14)
+    ax2.set_ylabel('Brier Score', fontsize=14)
     ax2.grid(True)
     
     os.makedirs('figures', exist_ok=True)

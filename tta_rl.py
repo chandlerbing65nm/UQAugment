@@ -41,6 +41,32 @@ def compute_brier(probs, labels, num_classes=None):
     brier = np.mean(np.sum((probs - one_hot) ** 2, axis=1))
     return brier
 
+def compute_nll(probs, labels):
+    """
+    Compute the Negative Log-Likelihood (NLL).
+    Args:
+        probs (ndarray): shape (N, C), predicted probabilities for each sample.
+        labels (ndarray): shape (N,), true class indices for each sample.
+    Returns:
+        float: The average NLL across all samples.
+    """
+    eps = 1e-12  # for numerical stability
+    true_class_probs = probs[np.arange(len(labels)), labels]
+    nll = -np.mean(np.log(true_class_probs + eps))
+    return nll
+
+def compute_accuracy(probs, labels):
+    """
+    Compute classification accuracy.
+    Args:
+        probs (ndarray): shape (N, C), predicted probabilities for each sample.
+        labels (ndarray): shape (N,), true class indices for each sample.
+    Returns:
+        float: The accuracy score.
+    """
+    predictions = probs.argmax(axis=1)
+    return np.mean(predictions == labels)
+
 def subsample_first_50_per_class(probs_list, targets):
     """Return subsampled probs and targets where only first 50 samples per class are kept"""
     num_classes = np.max(targets) + 1
@@ -104,16 +130,11 @@ class PreferenceBasedEnsembleOptimizer:
         
         # Store best weights and metrics
         self.best_weights = torch.ones(n_models, device=device) / n_models
-        self.best_ece = float('inf')
         self.best_nll = float('inf')
         
         # For binned state comparison
         self.weight_bins = {}
         self.bin_size = 0.05  # Round weights to 2 decimal places
-        
-        # For scalarization
-        self.ece_weight = 0.5  # Weight for ECE in scalarized objective
-        self.brier_weight = 0.5  # Weight for NLL in scalarized objective
         
         # For decaying exploration
         self.initial_exploration = 0.5
@@ -123,10 +144,12 @@ class PreferenceBasedEnsembleOptimizer:
         # Initialize history tracking
         self.history = {
             'weights': [],
+            'accuracy': [],
+            'nll': [],
             'ece': [],
             'brier': [],
             'exploration_rate': [],
-            'augmentation_names': [self._extract_aug_name(f) for f in file_names]  # Add this line
+            'augmentation_names': [self._extract_aug_name(f) for f in file_names]
         }
 
     def _extract_aug_name(self, filename):
@@ -163,7 +186,7 @@ class PreferenceBasedEnsembleOptimizer:
         return tuple(binned.cpu().numpy().round(2))
     
     def evaluate_weights(self, weights):
-        """Evaluate current weights by computing ECE and Brier Score"""
+        """Evaluate current weights by computing all metrics"""
         weights = weights / weights.sum()
         ensemble_preds = torch.zeros_like(self.mc_preds_list[0].mean(dim=-1))
 
@@ -173,15 +196,16 @@ class PreferenceBasedEnsembleOptimizer:
         ensemble_preds_np = ensemble_preds.cpu().numpy()
         targets_np = self.test_targets.cpu().numpy()
 
+        accuracy = compute_accuracy(ensemble_preds_np, targets_np)
+        nll = compute_nll(ensemble_preds_np, targets_np)
         ece = compute_ece(ensemble_preds_np, targets_np)
         brier = compute_brier(ensemble_preds_np, targets_np)
 
-        return ece, brier
+        return accuracy, nll, ece, brier
 
-    def scalarized_objective(self, ece, brier):
-        norm_ece = ece / 0.2
-        norm_brier = brier / 1.0  # Assuming Brier usually < 0.5 for good models
-        return self.ece_weight * norm_ece + self.brier_weight * norm_brier
+    def scalarized_objective(self, nll):
+        """Use NLL as the optimization objective"""
+        return nll  # Lower is better
 
     
     def generate_trajectory(self, max_steps=10, iteration=0):
@@ -247,6 +271,8 @@ class PreferenceBasedEnsembleOptimizer:
         np.savez(
             filename,
             weights=np.array(self.history['weights']),
+            accuracy=np.array(self.history['accuracy']),
+            nll=np.array(self.history['nll']),
             ece=np.array(self.history['ece']),
             brier=np.array(self.history['brier']),
             exploration_rate=np.array(self.history['exploration_rate']),
@@ -257,9 +283,11 @@ class PreferenceBasedEnsembleOptimizer:
     def optimize(self, n_iterations=20, n_trajectories=5, max_steps=5):
         # Store initial uniform weights first
         initial_weights = torch.ones(self.n_models, device=self.device) / self.n_models
-        initial_ece, initial_brier = self.evaluate_weights(initial_weights)
+        initial_accuracy, initial_nll, initial_ece, initial_brier = self.evaluate_weights(initial_weights)
         
         self.history['weights'].append(initial_weights.cpu().numpy())
+        self.history['accuracy'].append(initial_accuracy)
+        self.history['nll'].append(initial_nll)
         self.history['ece'].append(initial_ece)
         self.history['brier'].append(initial_brier)
         self.history['exploration_rate'].append(self.initial_exploration)
@@ -276,17 +304,16 @@ class PreferenceBasedEnsembleOptimizer:
             
             for traj in trajectories:
                 final_weights = traj[-1][2]  # Get final weights
-                ece, nll = self.evaluate_weights(final_weights)
-                score = self.scalarized_objective(ece, nll)
+                accuracy, nll, ece, brier = self.evaluate_weights(final_weights)
+                score = self.scalarized_objective(nll)
                 traj_scores.append(score)
                 
                 # Update best weights if improved
-                if ece < self.best_ece and nll < self.best_nll:
-                    self.best_ece = ece
+                if nll < self.best_nll:
                     self.best_nll = nll
                     self.best_weights = final_weights.clone()
             
-            # Generate preferences based on scalarized scores
+            # Generate preferences based on NLL scores
             for i in range(len(trajectories)):
                 for j in range(i+1, len(trajectories)):
                     if traj_scores[i] < traj_scores[j]:
@@ -300,8 +327,11 @@ class PreferenceBasedEnsembleOptimizer:
 
             # Store history at each iteration
             self.history['weights'].append(self.best_weights.cpu().numpy().copy())
-            self.history['ece'].append(self.best_ece)
-            self.history['brier'].append(self.best_nll)  # Note: your code uses nll as brier
+            accuracy, nll, ece, brier = self.evaluate_weights(self.best_weights)
+            self.history['accuracy'].append(accuracy)
+            self.history['nll'].append(nll)
+            self.history['ece'].append(ece)
+            self.history['brier'].append(brier)
             self.history['exploration_rate'].append(
                 max(self.final_exploration,
                     self.initial_exploration * (self.exploration_decay ** iteration)))
@@ -312,10 +342,10 @@ class PreferenceBasedEnsembleOptimizer:
 
 
 # models:   panns_cnn6, panns_mobilenetv2, ast
-# datasets: affia3k, mrsffia
+# datasets: affia3k, mrsffia, uffia
 
 if __name__ == "__main__":
-    dataset = 'affia3k'
+    dataset = 'uffia'
     model = 'ast'
     folder_path = f"/users/doloriel/work/Repo/UQFishAugment/probs_epistemic/{dataset}/{model}"
 
@@ -347,6 +377,8 @@ if __name__ == "__main__":
         ensemble_preds += best_weights[i] * mc_preds_list[i].mean(axis=-1)
 
     # Compute metrics
+    accuracy = compute_accuracy(ensemble_preds, all_test_targets)
+    nll = compute_nll(ensemble_preds, all_test_targets)
     ece = compute_ece(ensemble_preds, all_test_targets)
     brier = compute_brier(ensemble_preds, all_test_targets)
 
@@ -362,6 +394,8 @@ if __name__ == "__main__":
         print(f"- {aug_type}: {weight:.4f}")
     
     print(f"\nMetrics with optimized weights:")
+    print(f"Accuracy: {accuracy:.4f}")
+    print(f"NLL: {nll:.4f}")
     print(f"ECE: {ece:.4f}")
     print(f"Brier Score: {brier:.4f}")
     print("-" * 50)
@@ -372,6 +406,8 @@ if __name__ == "__main__":
     for i in range(len(file_names)):
         uniform_preds += uniform_weights[i] * mc_preds_list[i].mean(axis=-1)
 
+    uniform_accuracy = compute_accuracy(uniform_preds, all_test_targets)
+    uniform_nll = compute_nll(uniform_preds, all_test_targets)
     uniform_ece = compute_ece(uniform_preds, all_test_targets)
     uniform_brier = compute_brier(uniform_preds, all_test_targets)
 
@@ -387,6 +423,8 @@ if __name__ == "__main__":
         print(f"- {aug_type}: {weight:.4f}")
     
     print(f"\nMetrics with uniform weights:")
+    print(f"Accuracy: {uniform_accuracy:.4f}")
+    print(f"NLL: {uniform_nll:.4f}")
     print(f"ECE: {uniform_ece:.4f}")
     print(f"Brier Score: {uniform_brier:.4f}")
     print("-" * 50)

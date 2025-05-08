@@ -1,36 +1,34 @@
-# #!/bin/bash
+#!/bin/bash
 
-# none
-# band_stop_filter
-# gaussian_noise
-# pitch_shift
-# time_mask
-# time_stretch
-
-# ast
-# panns_cnn6
-# panns_mobilenetv2
+# ===================== Training Configuration =====================
+# Available Models: panns_cnn6, panns_mobilenetv2, ast
+# Available Augmentations: band_stop_filter, gaussian_noise, pitch_shift, time_mask, time_stretch
 
 
-########################### AFFIA3K ############################
+############################################################
+# AV-FFIA Dataset Configuration
+############################################################
 python extract.py \
     --batch_size 200 \
-    --dataset affia3k \
-    --data_path /scratch/project_465001389/chandler_scratch/Datasets/affia3k \
-    --checkpoint /scratch/project_465001389/chandler_scratch/Projects/FrameMixer/checkpoints_uq/affia3k_logmel_panns_mobilenetv2_none_best_map_dur-2.0_sr-128000_win-2048_hop-1024_mel-64_fmin-50_fmax-none_cls-4_seed-20_bs-200_epoch-500_loss-ce_audioment-time_stretch.pth \
+    --dataset uffia \
+    --data_path /scratch/project_465001389/chandler_scratch/Datasets/uffia \
+    --checkpoint /scratch/project_465001389/chandler_scratch/Projects/FrameMixer/checkpoints_uq/uffia/ast/uffia_logmel_ast_none_best_acc_dur-2.0_sr-64000_win-2048_hop-1024_mel-64_fmin-1_fmax-128000_cls-4_seed-20_bs-200_epoch-500_loss-ce_audioment-time_stretch.pth \
     --num_classes 4 \
-    --sample_rate 128000 \
+    --sample_rate 64000 \
     --window_size 2048 \
     --hop_size 1024 \
     --mel_bins 64 \
-    --fmin 50 \
+    --fmin 1 \
+    --fmax 128000 \
     --target_duration 2 \
     --tta \
-    --model_name "panns_mobilenetv2" \
-    --audiomentations 'band_stop_filter' \
-    --ablation \
+    --model_name "ast" \
+    --audiomentations 'time_stretch' \
+    --ablation
 
-# ############################ MRS-FFIA ############################
+# ############################################################
+# # MRS-FFIA Dataset Configuration
+# ############################################################
 # python extract.py \
 #     --batch_size 200 \
 #     --dataset mrsffia \
@@ -45,6 +43,26 @@ python extract.py \
 #     --fmax 14000 \
 #     --target_duration 3 \
 #     --tta \
+#     --model_name "panns_cnn6" \
+#     --audiomentations 'gaussian_noise' \
+#     --ablation
+
+# ############################################################
+# # AFFIA3K Dataset Configuration
+# ############################################################
+# python extract.py \
+#     --batch_size 200 \
+#     --dataset affia3k \
+#     --data_path /scratch/project_465001389/chandler_scratch/Datasets/affia3k \
+#     --checkpoint /scratch/project_465001389/chandler_scratch/Projects/FrameMixer/checkpoints_uq/affia3k_logmel_panns_mobilenetv2_none_best_map_dur-2.0_sr-128000_win-2048_hop-1024_mel-64_fmin-50_fmax-none_cls-4_seed-20_bs-200_epoch-500_loss-ce_audioment-time_stretch.pth \
+#     --num_classes 4 \
+#     --sample_rate 128000 \
+#     --window_size 2048 \
+#     --hop_size 1024 \
+#     --mel_bins 64 \
+#     --fmin 50 \
+#     --target_duration 2 \
+#     --tta \
 #     --model_name "panns_mobilenetv2" \
-#     --audiomentations 'time_stretch' \
-#     --ablation \
+#     --audiomentations 'band_stop_filter' \
+#     --ablation

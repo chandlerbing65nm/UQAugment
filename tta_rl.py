@@ -340,12 +340,53 @@ class PreferenceBasedEnsembleOptimizer:
         self._save_history()     
         return self.best_weights.cpu().numpy()
 
+def compute_prediction_variance(probs_list, weights):
+    """
+    Compute the variance of predictions across ensemble models.
+    Args:
+        probs_list (list): List of prediction arrays from each model
+        weights (ndarray): Weights for each model in the ensemble
+    Returns:
+        float: Average variance across all samples
+    """
+    # Stack all predictions
+    stacked_probs = np.stack([p.mean(axis=-1) for p in probs_list], axis=0)
+    
+    # Compute weighted mean
+    weighted_mean = np.sum(weights[:, np.newaxis, np.newaxis] * stacked_probs, axis=0)
+    
+    # Compute variance
+    variance = np.sum(weights[:, np.newaxis, np.newaxis] * (stacked_probs - weighted_mean[np.newaxis, :, :])**2, axis=0)
+    
+    # Return mean variance across all samples
+    return np.mean(variance)
+
+def compute_prediction_entropy(probs_list, weights):
+    """
+    Compute the entropy of the ensemble predictions.
+    Args:
+        probs_list (list): List of prediction arrays from each model
+        weights (ndarray): Weights for each model in the ensemble
+    Returns:
+        float: Average entropy across all samples
+    """
+    # Stack all predictions
+    stacked_probs = np.stack([p.mean(axis=-1) for p in probs_list], axis=0)
+    
+    # Compute weighted ensemble predictions
+    ensemble_probs = np.sum(weights[:, np.newaxis, np.newaxis] * stacked_probs, axis=0)
+    
+    # Compute entropy for each sample
+    entropy = -np.sum(ensemble_probs * np.log(ensemble_probs + 1e-10), axis=1)
+    
+    # Return mean entropy across all samples
+    return np.mean(entropy)
 
 # models:   panns_cnn6, panns_mobilenetv2, ast
 # datasets: affia3k, mrsffia, uffia
 
 if __name__ == "__main__":
-    dataset = 'mrsffia'
+    dataset = 'uffia'
     model = 'ast'
     folder_path = f"/users/doloriel/work/Repo/UQFishAugment/probs_epistemic/{dataset}/{model}"
 
@@ -381,6 +422,8 @@ if __name__ == "__main__":
     nll = compute_nll(ensemble_preds, all_test_targets)
     ece = compute_ece(ensemble_preds, all_test_targets)
     brier = compute_brier(ensemble_preds, all_test_targets)
+    pred_variance = compute_prediction_variance(aug_preds_list, best_weights)
+    pred_entropy = compute_prediction_entropy(aug_preds_list, best_weights)
 
     print("\nOptimization Results:")
     print("Best Weights:")
@@ -398,6 +441,8 @@ if __name__ == "__main__":
     print(f"NLL: {nll:.4f}")
     print(f"ECE: {ece:.4f}")
     print(f"Brier Score: {brier:.4f}")
+    print(f"Prediction Variance: {pred_variance:.4f}")
+    print(f"Prediction Entropy: {pred_entropy:.4f}")
     print("-" * 50)
 
     # Compare with uniform weights
@@ -410,6 +455,8 @@ if __name__ == "__main__":
     uniform_nll = compute_nll(uniform_preds, all_test_targets)
     uniform_ece = compute_ece(uniform_preds, all_test_targets)
     uniform_brier = compute_brier(uniform_preds, all_test_targets)
+    uniform_pred_variance = compute_prediction_variance(aug_preds_list, uniform_weights)
+    uniform_pred_entropy = compute_prediction_entropy(aug_preds_list, uniform_weights)
 
     print("\nUniform Weights Comparison:")
     print("Uniform Weights:")
@@ -427,4 +474,6 @@ if __name__ == "__main__":
     print(f"NLL: {uniform_nll:.4f}")
     print(f"ECE: {uniform_ece:.4f}")
     print(f"Brier Score: {uniform_brier:.4f}")
+    print(f"Prediction Variance: {uniform_pred_variance:.4f}")
+    print(f"Prediction Entropy: {uniform_pred_entropy:.4f}")
     print("-" * 50)

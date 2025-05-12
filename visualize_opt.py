@@ -67,12 +67,7 @@ def plot_weight_trajectories(histories, dataset_name, plot_every_n=50):
         'band_stop_filter': 'Band Stop Filter',
         'time_stretch': 'Time Stretch',
         'pitch_shift': 'Pitch Shift',
-        'background_noise': 'Background Noise',
-        'frequency_mask': 'Frequency Mask',
         'time_mask': 'Time Mask',
-        'spec_augment': 'Spec Augment',
-        'mixup': 'Mixup',
-        'cutmix': 'Cutmix'
     }
     
     # Prepare storage for averaged weights and std dev
@@ -164,47 +159,12 @@ def plot_weight_trajectories(histories, dataset_name, plot_every_n=50):
                bbox_inches='tight', dpi=300)
     plt.close()
 
-def plot_metric_progress(histories, dataset_name):
-    """Plot ECE and Brier score progress for all models"""
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
-    
-    # Set font sizes
-    plt.rcParams['axes.labelsize'] = 14
-    plt.rcParams['legend.fontsize'] = 12
-    plt.rcParams['xtick.labelsize'] = 12
-    plt.rcParams['ytick.labelsize'] = 12
-    
-    for model_name, history in histories.items():
-        iterations = range(len(history['ece']))
-        
-        # Plot ECE
-        ax1.plot(iterations, history['ece'], 
-                label=f"{model_name}", marker='o', markersize=3)
-        
-        # Plot Brier
-        ax2.plot(iterations, history['brier'],
-                label=f"{model_name}", marker='o', markersize=3)
-    
-    ax1.set_ylabel('ECE', fontsize=14)
-    ax1.set_title(f'Calibration Metric Progress\nDataset: {dataset_name}', fontsize=14)
-    ax1.grid(True)
-    ax1.legend(fontsize=12)
-    
-    ax2.set_xlabel('Iterations', fontsize=14)
-    ax2.set_ylabel('Brier Score', fontsize=14)
-    ax2.grid(True)
-    
-    os.makedirs('figures', exist_ok=True)
-    plt.savefig(f'figures/{dataset_name}_metric_progress.png', 
-               bbox_inches='tight', dpi=300)
-    plt.close()
-
 if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True,
-                       help='Dataset name (e.g., affia3k, mrsffia)')
+                       help='Dataset name (e.g., uffia, mrsffia)')
     args = parser.parse_args()
     
     # Load all histories for this dataset
@@ -212,6 +172,5 @@ if __name__ == "__main__":
     
     # Generate plots
     plot_weight_trajectories(histories, args.dataset)
-    # plot_metric_progress(histories, args.dataset)
     
     print(f"Visualizations saved to 'figures' directory")
